@@ -1,0 +1,11 @@
+.git
+**/.DS_Store
+**/.venv
+**/__pycache__
+**/*.pyc
+**/*.egg-info
+**/node_modules
+example-app/example_app/views/_server
+example-app/example_app/views/_ssr
+example-app/example_app/views/_static
+example-app/example_app/views/_metadata

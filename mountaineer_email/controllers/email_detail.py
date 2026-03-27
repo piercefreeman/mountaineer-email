@@ -1,6 +1,7 @@
 from json import loads as json_loads
 from typing import cast
 
+from fastapi import Request
 from inflection import underscore
 from lxml.html import fromstring as html_fromstring, tostring as html_tostring
 from pydantic import BaseModel
@@ -60,6 +61,7 @@ class EmailDetailController(ControllerBase):
 
     async def render(
         self,
+        request: Request,
         email_short: str,
         mock_body: str | None = None,
     ) -> EmailDetailRender:
@@ -104,8 +106,9 @@ class EmailDetailController(ControllerBase):
                     else None
                 )
                 # Our wrapped render will be async, even if the render() method
-                rendered = await email._generate_email(
-                    **({variable_key: parsed_email_body} if variable_key else {})
+                rendered = await email._generate_email_with_request(
+                    request,
+                    **({variable_key: parsed_email_body} if variable_key else {}),
                 )
 
                 # Re-parse the HTML to make it more readable
