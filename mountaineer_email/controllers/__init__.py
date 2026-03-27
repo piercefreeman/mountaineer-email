@@ -1,0 +1,2 @@
+from .email_detail import EmailDetailController as EmailDetailController
+from .email_home import EmailHomeController as EmailHomeController
