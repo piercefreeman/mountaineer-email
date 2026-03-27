@@ -106,8 +106,8 @@ class EmailDetailController(ControllerBase):
                     else None
                 )
                 # Our wrapped render will be async, even if the render() method
-                rendered = await email._generate_email(
-                    request=request,
+                rendered = await email._generate_email_with_request(
+                    request,
                     **({variable_key: parsed_email_body} if variable_key else {}),
                 )
 

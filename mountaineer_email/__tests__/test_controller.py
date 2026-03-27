@@ -196,9 +196,9 @@ async def test_generate_email_with_request_scope(
             "headers": [],
         }
     )
-    result = await email_controller._generate_email(
+    result = await email_controller._generate_email_with_request(
+        request,
         initial_data=ExampleData(value="REQUEST_VALUE"),
-        request=request,
     )
 
     assert "REQUEST_VALUE" in result.html_body

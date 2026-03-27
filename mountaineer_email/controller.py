@@ -100,7 +100,14 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
     async def _generate_email(
         self,
         *args: RenderParameters.args,
-        request: Request | None = None,
+        **kwargs: RenderParameters.kwargs,
+    ) -> FilledOutEmail:
+        return await self._generate_email_with_request(None, *args, **kwargs)
+
+    async def _generate_email_with_request(
+        self,
+        request: Request | None,
+        *args: RenderParameters.args,
         **kwargs: RenderParameters.kwargs,
     ) -> FilledOutEmail:
         async with resolve_email_dependencies(
