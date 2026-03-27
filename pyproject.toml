@@ -42,6 +42,7 @@ dev = [
     "lxml-stubs>=0.5.1",
     "httpx>=0.27.0",
     "ty>=0.0.26",
+    "pytest-httpx>=0.35.0",
 ]
 
 [tool.uv.sources]

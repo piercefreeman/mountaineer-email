@@ -26,7 +26,10 @@ def email_app_controller(view_root: Path):
 
 @pytest.fixture
 def config() -> models.AppConfig:
-    return models.AppConfig()
+    return models.AppConfig(
+        RESEND_API_KEY="test-api-key",
+        RESEND_BASE_URL="https://api.resend.test",
+    )
 
 
 @pytest.fixture

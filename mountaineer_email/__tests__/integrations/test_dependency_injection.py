@@ -1,5 +1,6 @@
 import shutil
 import subprocess
+from json import loads as json_loads
 from pathlib import Path
 from typing import cast
 
@@ -7,17 +8,27 @@ import pytest
 from fastapi import Depends
 from inflection import underscore
 from pydantic import BaseModel
+from pytest_httpx import HTTPXMock  # pyright: ignore[reportMissingImports]
 
 from mountaineer import (
     AppController,
     LinkAttribute,
     Metadata,
-    mountaineer as mountaineer_rs,  # ty: ignore[unresolved-import]
+    mountaineer as mountaineer_rs,  # ty: ignore[unresolved-import]  # pyright: ignore[reportAttributeAccessIssue]
 )
 from mountaineer.client_builder.builder import APIBuilder
 from mountaineer.client_compiler.compile import ClientCompiler
 from mountaineer.dependencies import isolate_dependency_only_function
 from mountaineer.static import get_static_path
+from mountaineer_cloud.primitives import (  # pyright: ignore[reportMissingImports]
+    EmailBody,
+    EmailMessage,
+    EmailRecipient,
+)
+from mountaineer_cloud.providers.resend import (  # pyright: ignore[reportMissingImports]
+    ResendCore,
+    ResendDependencies,
+)
 
 from mountaineer_email.controller import (
     EmailControllerBase,
@@ -124,6 +135,28 @@ async def render_with_injected_template(
     return cast(FilledOutEmail, await template.render(payload))
 
 
+async def send_with_injected_template_and_provider(
+    payload: InjectedTemplatePayload,
+    template: InjectedTemplateController = Depends(
+        get_email_template(InjectedTemplateController)
+    ),
+    resend: ResendCore = Depends(ResendDependencies.get_resend_core),
+) -> str:
+    filled_email = cast(FilledOutEmail, await template.render(payload))
+
+    message = EmailMessage[ResendCore](
+        sender=EmailRecipient(
+            email="noreply@example.com",
+            display_name="Example App",
+        ),
+        recipient=EmailRecipient(email="ada@example.com"),
+        subject=filled_email.subject,
+        body=EmailBody(html=filled_email.html_body),
+    )
+
+    return await message.send(resend)
+
+
 @pytest.mark.asyncio
 async def test_dependency_injection_renders_email_template(
     view_root: Path,
@@ -159,4 +192,55 @@ async def test_dependency_injection_renders_email_template(
     assert (
         "Integration coverage for dependency injection. Sent with a render dependency."
         in result.html_body
+    )
+
+
+@pytest.mark.asyncio
+async def test_dependency_injection_sends_email_with_provider(
+    view_root: Path,
+    app_controller: AppController,
+    httpx_mock: HTTPXMock,
+) -> None:
+    integration_view_root = copy_integration_view(view_root)
+    subprocess.run(["npm", "install"], cwd=integration_view_root, check=True)
+
+    template_controller = InjectedTemplateController()
+    app_controller.register(template_controller)
+
+    await build_email_views(app_controller)
+    template_controller.resolve_paths(app_controller._view_root, force=True)
+
+    httpx_mock.add_response(
+        method="POST",
+        url="https://api.resend.test/emails",
+        json={"id": "email_123"},
+    )
+
+    payload = InjectedTemplatePayload(
+        recipient_name="Ada",
+        message="Integration coverage for dependency injection.",
+    )
+
+    async with resolve_email_dependencies(
+        callable=isolate_dependency_only_function(
+            send_with_injected_template_and_provider
+        ),
+    ) as dependency_values:
+        assert dependency_values["template"] is template_controller
+        provider_message_id = await send_with_injected_template_and_provider(
+            payload=payload,
+            **dependency_values,
+        )
+
+    requests = httpx_mock.get_requests(url="https://api.resend.test/emails")
+    assert len(requests) == 1
+
+    request_body = json_loads(requests[0].content.decode())
+    assert provider_message_id == "email_123"
+    assert request_body["from"] == "Example App <noreply@example.com>"
+    assert request_body["to"] == ["ada@example.com"]
+    assert request_body["subject"] == "Hello Ada"
+    assert (
+        "Integration coverage for dependency injection. Sent with a render dependency."
+        in request_body["html"]
     )
