@@ -4,7 +4,7 @@ Dependencies to easily format and send email with Mountaineer or FastAPI.
 
 ## Getting Started
 
-Since email deliverability is nearly zero if you send with local linux utilities, you'll almost always want to use a 3rd party service. AWS SES and Resend are two of the most popular. This package is vendor agnostic and instead delegates the email sending to [mountaineer-cloud](https://github.com/piercefreeman/mountaineer-cloud). `mountaineer-email` providers.
+Since email deliverability is nearly zero if you send with local linux utilities, you'll almost always want to use a 3rd party service. This package is provider agnostic and delegates delivery integrations to [mountaineer-cloud](https://github.com/piercefreeman/mountaineer-cloud) provider packages such as Resend.
 
 TODO: Full example
 
@@ -121,6 +121,8 @@ controller = AppController(
 
 controller.register(emails.WelcomeEmailController())
 ```
+
+`mountaineer-email` only owns the rendering and preview flow. Provider-specific delivery settings should come from the matching `mountaineer-cloud` provider config, for example `ResendConfig` if you're sending through Resend.
 
 ### Inliner
 
