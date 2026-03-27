@@ -12,7 +12,7 @@ dependencies = [
     "lxml>=5.1.0",
     # for now, flexible to version but requires them present
     # during execution
-    "mountaineer-cloud",
+    "mountaineer-cloud>=0.1.1",
     "mountaineer",
 ]
 

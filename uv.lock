@@ -540,15 +540,16 @@ wheels = [
 
 [[package]]
 name = "mountaineer-cloud"
-version = "0.1.0"
+version = "0.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aioboto3" },
+    { name = "httpx" },
     { name = "pydantic-settings" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/15/c4/36e7741de5165d5cdefc2d92bb4706b7c0e3678227d8cdcbcb1b1d29962a/mountaineer_cloud-0.1.0.tar.gz", hash = "sha256:c70eed19e24528a7f9d7ad1b3f7c815c400d071cfde829d743da52ce777e12be", size = 964856, upload-time = "2026-03-26T20:48:01.597Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0c/76/b00d7d52ac7d5c22a1c10f9f7d1831c150717d754d609696b979178146b7/mountaineer_cloud-0.1.1.tar.gz", hash = "sha256:c9f49319589c6c1c642568bdfe8ed04124508faecb8805e39442cf626f305691", size = 968496, upload-time = "2026-03-27T22:51:24.79Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5b/4c/82f7660160a357d7a68efb8139d3e30a291f0681a2890e4a5b8db7e303c5/mountaineer_cloud-0.1.0-py3-none-any.whl", hash = "sha256:73d4b0e4b34d535e074389077ac9be64ec0c7f99daf6352ef6cd75b8d6fa0b91", size = 36615, upload-time = "2026-03-26T20:47:59.899Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/b9/4e7f013cdea3aa11b1a036b572d85819118669c84203276eac5abc4a85ed/mountaineer_cloud-0.1.1-py3-none-any.whl", hash = "sha256:817fbd625e3f3d0445515f81ac2061ed6b522d294ea49653e18a00eca148fa00", size = 44788, upload-time = "2026-03-27T22:51:23.591Z" },
 ]
 
 [[package]]
@@ -579,7 +580,7 @@ dev = [
 requires-dist = [
     { name = "lxml", specifier = ">=5.1.0" },
     { name = "mountaineer" },
-    { name = "mountaineer-cloud" },
+    { name = "mountaineer-cloud", specifier = ">=0.1.1" },
     { name = "pydantic-settings", specifier = ">=2.2.1" },
 ]
 
