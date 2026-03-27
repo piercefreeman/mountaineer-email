@@ -157,3 +157,11 @@ if ENV == "development":
     controller.register(email_admin_controllers.EmailHomeController())
     controller.register(email_admin_controllers.EmailDetailController())
 ```
+
+## Development
+
+If you update the admin UI files, you'll need to build the artifacts for inclusion in the published library. We do this automatically when distributing through CI, so this is just when you're making changes and testing locally:
+
+```bash
+uv run build-email
+```
