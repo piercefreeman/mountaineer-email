@@ -250,7 +250,7 @@ async def send_preview(
 
 ### Inliner
 
-To inline Tailwind (similar to the juice package), we recommend you use `@react-email/tailwind` since it has a lot of helper utilities out of the box for tailwind's variables:
+Since regular tailwind will render css to a 3rd party stylesheet - that can't be read by most email browsers - you'll want to inline the styles of your tailwind components so they show up as `<div style=xyz>`. We recommend you use `@react-email/tailwind` since it has a lot of helper utilities out of the box for tailwind's variables:
 
 ```bash
 cd project/views && npm install @react-email/tailwind
