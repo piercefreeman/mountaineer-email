@@ -25,11 +25,10 @@ def email_app_controller(view_root: Path):
 
 
 @pytest.fixture
-def config(email_app_controller: AppController):
+def config() -> models.AppConfig:
     return models.AppConfig(
-        EMAIL_SENDER_ADDRESS="test@example.com",
-        EMAIL_SENDER_NAME="Test User",
-        EMAIL_CONTROLLER_CONTEXT=lambda: email_app_controller,
+        RESEND_API_KEY="test-api-key",
+        RESEND_BASE_URL="https://api.resend.test",
     )
 
 

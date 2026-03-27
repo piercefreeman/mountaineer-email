@@ -73,7 +73,13 @@ class EmailDetailController(ControllerBase):
 
         """
         email = self.get_email(email_short)
-        variable_key, variable_input = email.get_input_model()
+        input_models = email.get_input_models()
+        if len(input_models) > 1:
+            raise ValueError(
+                f"Expected zero or one input model for {email.__class__.__name__}, got {input_models}"
+            )
+
+        variable_key, variable_input = input_models[0] if input_models else (None, None)
         simple_schema: SimpleSchema | None = None
 
         mock_body_echo: dict[str, str] | None = None
@@ -105,16 +111,16 @@ class EmailDetailController(ControllerBase):
                     if variable_input
                     else None
                 )
-                # Our wrapped render will be async, even if the render() method
-                rendered = await email._generate_email_with_request(
+                filled_email = await email.render_email_with_request(
                     request,
                     **({variable_key: parsed_email_body} if variable_key else {}),
                 )
 
                 # Re-parse the HTML to make it more readable
-                rendered.html_body = html_tostring(
-                    html_fromstring(rendered.html_body), pretty_print=True
+                filled_email.html_body = html_tostring(
+                    html_fromstring(filled_email.html_body), pretty_print=True
                 )
+                rendered = filled_email
             except Exception as e:
                 exception = str(e)
 

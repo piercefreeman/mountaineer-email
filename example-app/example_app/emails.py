@@ -23,7 +23,6 @@ class WelcomePreviewEmail(EmailControllerBase[WelcomePreviewEmailRequest]):
             recipient_name=payload.recipient_name,
             email_metadata=EmailMetadata(
                 subject=f"Welcome aboard, {payload.recipient_name}",
-                to_email="preview@example.com",
             ),
             metadata=Metadata(
                 links=[

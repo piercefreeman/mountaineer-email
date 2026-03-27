@@ -3,12 +3,13 @@ from pydantic import BaseModel
 
 from mountaineer import AppController
 
-from mountaineer_email.config import EmailConfig
 from mountaineer_email.controller import EmailControllerBase
+from mountaineer_email.deps import get_email_template
 from mountaineer_email.registry import (
     clear_email_controller_cache,
     controller_to_registry_id,
     get_email_controller,
+    register_email_controller,
 )
 from mountaineer_email.render import EmailMetadata, EmailRenderBase
 
@@ -29,7 +30,6 @@ class SampleEmailController(EmailControllerBase):
             message=data.message,
             email_metadata=EmailMetadata(
                 subject="Test Subject",
-                to_email="test@example.com",
             ),
         )
 
@@ -42,7 +42,6 @@ class AnotherSampleEmailController(EmailControllerBase):
             message=f"Another: {data.message}",
             email_metadata=EmailMetadata(
                 subject="Another Test Subject",
-                to_email="another@example.com",
             ),
         )
 
@@ -83,9 +82,9 @@ def test_clear_email_controller_cache():
 
 
 def test_get_email_controller_builds_cache_on_first_call(
-    email_app_controller: AppController, config: EmailConfig
-):
-    """Test that get_email_controller builds the cache on first call."""
+    email_app_controller: AppController,
+) -> None:
+    """Test that get_email_controller returns mounted controller instances."""
     # Create and register test controllers
     test_controller = SampleEmailController()
     another_controller = AnotherSampleEmailController()
@@ -97,46 +96,35 @@ def test_get_email_controller_builds_cache_on_first_call(
     test_registry_id = controller_to_registry_id(SampleEmailController)
 
     # Call get_email_controller
-    result = get_email_controller(test_registry_id, config)
+    result = get_email_controller(test_registry_id)
 
     # Verify the result
     assert result == test_controller
 
-    # Verify the cache was built
-    import mountaineer_email.registry as registry_module
-
-    assert registry_module.EMAIL_CONTROLLER_CACHE is not None
-    assert len(registry_module.EMAIL_CONTROLLER_CACHE) == 2
-    assert registry_module.EMAIL_CONTROLLER_CACHE[test_registry_id] == test_controller
-
 
 def test_get_email_controller_uses_existing_cache(
-    email_app_controller: AppController, config: EmailConfig
-):
-    """Test that get_email_controller uses existing cache on subsequent calls."""
+    email_app_controller: AppController,
+) -> None:
+    """Test that get_email_controller uses globally registered instances."""
     # Create a test controller
     test_controller = SampleEmailController()
     test_registry_id = controller_to_registry_id(SampleEmailController)
-
-    # Pre-populate the cache
-    import mountaineer_email.registry as registry_module
-
-    registry_module.EMAIL_CONTROLLER_CACHE = {test_registry_id: test_controller}
+    email_app_controller.register(test_controller)
 
     # Call get_email_controller
-    result = get_email_controller(test_registry_id, config)
+    result = get_email_controller(test_registry_id)
 
     # Verify the result
     assert result == test_controller
 
     # Verify the cache was used (no controllers should be registered on the app controller)
-    assert len(email_app_controller.graph.controllers) == 0
+    assert len(email_app_controller.graph.controllers) == 1
 
 
 def test_get_email_controller_filters_non_email_controllers(
-    email_app_controller: AppController, config: EmailConfig
-):
-    """Test that get_email_controller only caches EmailControllerBase instances."""
+    email_app_controller: AppController,
+) -> None:
+    """Test that get_email_controller only resolves EmailControllerBase instances."""
     from mountaineer import ControllerBase
     from mountaineer.render import RenderBase
 
@@ -158,25 +146,27 @@ def test_get_email_controller_filters_non_email_controllers(
     test_registry_id = controller_to_registry_id(SampleEmailController)
 
     # Call get_email_controller
-    result = get_email_controller(test_registry_id, config)
+    result = get_email_controller(test_registry_id)
 
     # Verify the result
     assert result == test_controller
 
-    # Verify only the EmailControllerBase was cached
-    import mountaineer_email.registry as registry_module
-
-    assert registry_module.EMAIL_CONTROLLER_CACHE is not None
-    assert len(registry_module.EMAIL_CONTROLLER_CACHE) == 1
-    assert registry_module.EMAIL_CONTROLLER_CACHE[test_registry_id] == test_controller
-
 
 def test_get_email_controller_raises_key_error_for_missing_controller(
-    email_app_controller: AppController, config: EmailConfig
-):
+    email_app_controller: AppController,
+) -> None:
     """Test that get_email_controller raises KeyError for non-existent registry ID."""
     # Don't register any controllers
 
     # Try to get a non-existent controller
     with pytest.raises(KeyError):
-        get_email_controller("non_existent_id", config)
+        get_email_controller("non_existent_id")
+
+
+def test_get_email_template_returns_registered_instance():
+    register_email_controller(SampleEmailController)
+
+    dependency = get_email_template(SampleEmailController)
+    result = dependency()
+
+    assert isinstance(result, SampleEmailController)

@@ -1,7 +1,8 @@
 from mountaineer import ConfigBase
+from mountaineer_cloud.providers.resend.config import (  # pyright: ignore[reportMissingImports]
+    ResendConfig,
+)
 
-from mountaineer_email.config import EmailConfig
 
-
-class AppConfig(EmailConfig, ConfigBase):
+class AppConfig(ConfigBase, ResendConfig):
     pass

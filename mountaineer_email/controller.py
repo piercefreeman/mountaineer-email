@@ -1,5 +1,7 @@
 from abc import abstractmethod
+from collections.abc import Mapping
 from contextlib import AsyncExitStack, asynccontextmanager
+from functools import wraps
 from inspect import isawaitable, isclass, signature
 from typing import Any, Coroutine, Generic, ParamSpec, cast
 from uuid import uuid4
@@ -15,6 +17,7 @@ from mountaineer.ssr import render_ssr
 from mountaineer_email.render import EmailRenderBase, FilledOutEmail
 
 RenderParameters = ParamSpec("RenderParameters")
+RAW_RENDER_METHOD_NAME = "_mountaineer_email_raw_render"
 
 
 @asynccontextmanager
@@ -77,11 +80,31 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
-        # Auto-register email controller classes (but not the base class itself)
-        if cls.__name__ != "EmailControllerBase":
-            from mountaineer_email.registry import register_email_controller_class
+        if cls.__name__ == "EmailControllerBase":
+            return
 
-            register_email_controller_class(cls)
+        raw_render = cls.__dict__.get("render")
+        if raw_render:
+            setattr(cls, RAW_RENDER_METHOD_NAME, raw_render)
+
+            @wraps(raw_render)
+            async def wrapped_render(self, *args, **kwargs):
+                if self._should_render_filled_email(args, kwargs):
+                    return await self.render_obj(
+                        cast(BaseModel | dict[str, Any], args[0])
+                    )
+
+                server_data = self._call_raw_render(*args, **kwargs)
+                if isawaitable(server_data):
+                    server_data = await server_data
+                return server_data
+
+            setattr(cls, "render", wrapped_render)
+
+        # Auto-register email controller classes (but not the base class itself)
+        from mountaineer_email.registry import register_email_controller_class
+
+        register_email_controller_class(cls)
 
     def __init__(self):
         # We need this definition to be included in our global OpenAPI spec, so we add
@@ -91,31 +114,61 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
         self.url = f"/email/{self.__class__.__name__}-{uuid4()}/"
         super().__init__()
 
+        from mountaineer_email.registry import register_email_controller_instance
+
+        register_email_controller_instance(self)
+
     @abstractmethod
     def render(
         self, *payload: RenderParameters.args, **kwargs: RenderParameters.kwargs
     ) -> EmailRenderBase | Coroutine[Any, Any, EmailRenderBase]:
         pass
 
+    def _get_raw_render(self):
+        return getattr(self, RAW_RENDER_METHOD_NAME)
+
+    def _call_raw_render(
+        self,
+        *args: Any,
+        **kwargs: Any,
+    ) -> EmailRenderBase | Coroutine[Any, Any, EmailRenderBase]:
+        return self._get_raw_render()(*args, **kwargs)
+
+    def _should_render_filled_email(
+        self,
+        args: tuple[Any, ...],
+        kwargs: dict[str, Any],
+    ) -> bool:
+        if kwargs or len(args) != 1:
+            return False
+
+        input_models = self.get_input_models()
+        if len(input_models) != 1:
+            return False
+
+        _, input_model = input_models[0]
+        return isinstance(args[0], input_model) or isinstance(args[0], Mapping)
+
     async def _generate_email(
         self,
-        *args: RenderParameters.args,
-        **kwargs: RenderParameters.kwargs,
+        *args: Any,
+        **kwargs: Any,
     ) -> FilledOutEmail:
         return await self._generate_email_with_request(None, *args, **kwargs)
 
     async def _generate_email_with_request(
         self,
         request: Request | None,
-        *args: RenderParameters.args,
-        **kwargs: RenderParameters.kwargs,
+        *args: Any,
+        **kwargs: Any,
     ) -> FilledOutEmail:
         async with resolve_email_dependencies(
-            callable=isolate_dependency_only_function(self.render),
+            callable=isolate_dependency_only_function(self._get_raw_render()),
             request=request,
             url=self.url,
         ) as values:
-            server_data_raw = self.render(*args, **kwargs, **values)
+            render_kwargs: dict[str, Any] = {**kwargs, **values}
+            server_data_raw = self._call_raw_render(*args, **cast(Any, render_kwargs))
             if isawaitable(server_data_raw):
                 server_data_raw = await server_data_raw
             server_data = cast(EmailRenderBase, server_data_raw)
@@ -166,20 +219,54 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
             )
 
         return FilledOutEmail(
-            to_email=server_data.email_metadata.to_email,
             subject=server_data.email_metadata.subject,
             html_body=page_contents,
         )
 
-    def get_input_model(self) -> tuple[str, BaseModel]:
+    async def render_email(
+        self,
+        *args: Any,
+        **kwargs: Any,
+    ) -> FilledOutEmail:
+        return await self._generate_email(*args, **kwargs)
+
+    async def render_email_with_request(
+        self,
+        request: Request | None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> FilledOutEmail:
+        return await self._generate_email_with_request(request, *args, **kwargs)
+
+    async def render_obj(
+        self,
+        render_obj: BaseModel | dict[str, Any],
+        *,
+        request: Request | None = None,
+    ) -> FilledOutEmail:
+        variable_key, variable_input = self.get_input_model()
+        parsed_render_obj = (
+            render_obj
+            if isinstance(render_obj, variable_input)
+            else variable_input.model_validate(render_obj)
+        )
+        if request is not None:
+            return await self.render_email_with_request(
+                request,
+                **{variable_key: parsed_render_obj},
+            )
+        return await self.render_email(**{variable_key: parsed_render_obj})
+
+    def get_input_models(self) -> list[tuple[str, type[BaseModel]]]:
         """
-        Returns the primary BaseModel that defines the email, or None
-        if one is not specified.
+        Returns the BaseModel inputs that define the email payload.
 
         """
-        variable_inputs = [
+        return [
             (key, signature_value.annotation)
-            for key, signature_value in signature(self.render).parameters.items()
+            for key, signature_value in signature(
+                self._get_raw_render()
+            ).parameters.items()
             if (
                 isclass(signature_value.annotation)
                 and issubclass(signature_value.annotation, BaseModel)
@@ -187,9 +274,16 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
             )
         ]
 
+    def get_input_model(self) -> tuple[str, type[BaseModel]]:
+        """
+        Returns the primary BaseModel that defines the email.
+
+        """
+        variable_inputs = self.get_input_models()
+
         if len(variable_inputs) != 1:
             raise ValueError(
                 f"Expected exactly one input model for {self.__class__.__name__} render(), got {variable_inputs}"
             )
 
-        return cast(tuple[str, BaseModel], variable_inputs[0])
+        return variable_inputs[0]
