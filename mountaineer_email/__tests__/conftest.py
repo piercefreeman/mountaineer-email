@@ -25,12 +25,8 @@ def email_app_controller(view_root: Path):
 
 
 @pytest.fixture
-def config(email_app_controller: AppController):
-    return models.AppConfig(
-        EMAIL_SENDER_ADDRESS="test@example.com",
-        EMAIL_SENDER_NAME="Test User",
-        EMAIL_CONTROLLER_CONTEXT=lambda: email_app_controller,
-    )
+def config() -> models.AppConfig:
+    return models.AppConfig()
 
 
 @pytest.fixture

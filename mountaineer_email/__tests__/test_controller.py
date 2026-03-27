@@ -20,6 +20,7 @@ from mountaineer.static import get_static_path
 from mountaineer_email.__tests__.fixtures import get_fixtures_path
 from mountaineer_email.controller import (
     EmailControllerBase,
+    FilledOutEmail,
 )
 from mountaineer_email.render import (
     EmailMetadata,
@@ -172,6 +173,83 @@ async def test_generate_email(
     )
 
     assert "MY_DYNAMIC_VALUE" in result.html_body
+
+
+@pytest.mark.asyncio
+async def test_render_helper_with_model_instance(
+    mock_application_view: Path,
+    app_controller: AppController,
+):
+    subprocess.run(["npm", "install"], cwd=mock_application_view, check=True)
+
+    email_controller = ExampleEmailController()
+    app_controller.register(email_controller)
+
+    await simple_build(app_controller)
+    email_controller.resolve_paths(app_controller._view_root, force=True)
+
+    result = await email_controller.render(ExampleData(value="POSITIONAL_VALUE"))
+
+    assert isinstance(result, FilledOutEmail)
+    assert "POSITIONAL_VALUE" in result.html_body
+
+
+@pytest.mark.asyncio
+async def test_render_obj_helper(
+    mock_application_view: Path,
+    app_controller: AppController,
+):
+    subprocess.run(["npm", "install"], cwd=mock_application_view, check=True)
+
+    email_controller = ExampleEmailController()
+    app_controller.register(email_controller)
+
+    await simple_build(app_controller)
+    email_controller.resolve_paths(app_controller._view_root, force=True)
+
+    result = await email_controller.render_obj({"value": "DICT_VALUE"})
+
+    assert "DICT_VALUE" in result.html_body
+
+
+@pytest.mark.asyncio
+async def test_render_helper_with_dict_payload(
+    mock_application_view: Path,
+    app_controller: AppController,
+):
+    subprocess.run(["npm", "install"], cwd=mock_application_view, check=True)
+
+    email_controller = ExampleEmailController()
+    app_controller.register(email_controller)
+
+    await simple_build(app_controller)
+    email_controller.resolve_paths(app_controller._view_root, force=True)
+
+    result = await email_controller.render({"value": "DICT_RENDER_VALUE"})
+
+    assert isinstance(result, FilledOutEmail)
+    assert "DICT_RENDER_VALUE" in result.html_body
+
+
+@pytest.mark.asyncio
+async def test_render_with_kwargs_returns_render_model(
+    mock_application_view: Path,
+    app_controller: AppController,
+):
+    subprocess.run(["npm", "install"], cwd=mock_application_view, check=True)
+
+    email_controller = ExampleEmailController()
+    app_controller.register(email_controller)
+
+    await simple_build(app_controller)
+    email_controller.resolve_paths(app_controller._view_root, force=True)
+
+    result = await email_controller.render(
+        initial_data=ExampleData(value="KWARG_VALUE")
+    )
+
+    assert isinstance(result, ExampleEmailRender)
+    assert result.initial_value == "KWARG_VALUE"
 
 
 @pytest.mark.asyncio

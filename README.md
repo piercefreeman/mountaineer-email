@@ -124,6 +124,24 @@ controller.register(emails.WelcomeEmailController())
 
 `mountaineer-email` only owns the rendering and preview flow. Provider-specific delivery settings should come from the matching `mountaineer-cloud` provider config, for example `ResendConfig` if you're sending through Resend.
 
+To render a filled email from application code, resolve the mounted template instance from the registry and call `render(...)` with your request model:
+
+```python
+from fastapi import Depends
+
+from mountaineer_email import get_email_template
+
+
+async def send_preview(
+    template: WelcomeEmailController = Depends(
+        get_email_template(WelcomeEmailController)
+    ),
+):
+    filled_email = await template.render(
+        WelcomeEmailRequest(user_id=user_id),
+    )
+```
+
 ### Inliner
 
 To inline Tailwind (similar to the juice package), we recommend you use `@react-email/tailwind` since it has a lot of helper utilities out of the box for tailwind's variables:
