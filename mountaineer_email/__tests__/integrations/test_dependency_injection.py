@@ -38,16 +38,21 @@ class InjectedTemplateRender(EmailRenderBase):
     message: str
 
 
+def get_message_suffix() -> str:
+    return " Sent with a render dependency."
+
+
 class InjectedTemplateController(EmailControllerBase):
     view_path = "/emails/dependency_injection/page.tsx"
 
     async def render(
         self,
         payload: InjectedTemplatePayload,
+        message_suffix: str = Depends(get_message_suffix),
     ) -> InjectedTemplateRender:
         return InjectedTemplateRender(
             recipient_name=payload.recipient_name,
-            message=payload.message,
+            message=f"{payload.message}{message_suffix}",
             email_metadata=EmailMetadata(
                 subject=f"Hello {payload.recipient_name}",
             ),
@@ -151,4 +156,7 @@ async def test_dependency_injection_renders_email_template(
     assert result.subject == "Hello Ada"
     assert "Hello" in result.html_body
     assert "Ada" in result.html_body
-    assert "Integration coverage for dependency injection." in result.html_body
+    assert (
+        "Integration coverage for dependency injection. Sent with a render dependency."
+        in result.html_body
+    )

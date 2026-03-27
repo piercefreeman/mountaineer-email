@@ -179,6 +179,37 @@ class WelcomeEmailController(EmailControllerBase[WelcomeEmailRequest]):
         )
 ```
 
+Dependencies declared on `render()` are resolved when you call `template.render(...)` or `template.render_email(...)`. For example, you can combine the payload with another injected value:
+
+```python
+from fastapi import Depends
+
+
+def get_email_signature() -> str:
+    return "Thanks for joining us!"
+
+
+class WelcomeEmailController(EmailControllerBase[WelcomeEmailRequest]):
+    view_path = "emails/welcome/page.tsx"
+
+    async def render(
+        self,
+        payload: WelcomeEmailRequest,
+        db_session: DBConnection = Depends(DatabaseDependencies.get_db_connection),
+        signature: str = Depends(get_email_signature),
+    ) -> WelcomeEmailRender:
+        user = await db_session.get(models.User, payload.user_id)
+        if not user:
+            raise ValueError(f"User not found: {payload.user_id}")
+
+        return WelcomeEmailRender(
+            user_name=f"{user.name} {signature}",
+            email_metadata=EmailMetadata(
+                subject="Welcome!",
+            ),
+        )
+```
+
 Then add these controllers to your AppController:
 
 ```python
