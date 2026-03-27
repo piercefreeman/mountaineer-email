@@ -1,35 +1,24 @@
+from fastapi.responses import RedirectResponse
+from starlette import status
 
-from mountaineer import sideeffect, ControllerBase, Metadata, RenderBase
-from iceaxe.mountaineer import DatabaseDependencies
-from iceaxe import DBConnection, select
-
-from fastapi import Depends
-
-from example_app import models
+from mountaineer import ControllerBase, Metadata, RenderBase
 
 
 class HomeRender(RenderBase):
-    items: list[models.DetailItem]
+    pass
 
 
 class HomeController(ControllerBase):
     url = "/"
     view_path = "/app/home/page.tsx"
 
-    async def render(
-        self,
-        session: DBConnection = Depends(DatabaseDependencies.get_db_connection)
-    ) -> HomeRender:
-        items = await session.exec(select(models.DetailItem))
+    async def render(self) -> HomeRender:
         return HomeRender(
-            items=items,
-            metadata=Metadata(title="Home"),
+            metadata=Metadata(
+                title="Email Preview",
+                explicit_response=RedirectResponse(
+                    status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+                    url="/admin/email/",
+                ),
+            ),
         )
-
-    @sideeffect
-    async def new_detail(
-        self,
-        session: DBConnection = Depends(DatabaseDependencies.get_db_connection)
-    ) -> None:
-        obj = models.DetailItem(description="Untitled Item")
-        await session.insert([obj])

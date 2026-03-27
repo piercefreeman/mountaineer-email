@@ -1,74 +1,59 @@
+# Local development Dockerfile for running the example app with hot-reload.
 #
-# Node dependencies stage
-# This stage is only used to install the dependencies that will be used
-# by our frontend bundler in later stages.
-#
-FROM node:20-slim as node-dependencies
+# The compose file builds from the repo root so we can install the local
+# `mountaineer_email` package and mount both codebases into the container.
 
-WORKDIR /usr/src/app
-
-# We only require the dependency definitions
-COPY example_app/views/package.json example_app/views/package-lock.json ./
-RUN npm install
-
-#
-# Python builder stage
-#
-FROM python:3.11-slim-bookworm AS builder
-
-WORKDIR /app
+FROM ubuntu:24.04
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends nodejs jq curl \
+    && apt-get install -y --no-install-recommends \
+        python3.12 \
+        python3.12-venv \
+        python3.12-dev \
+        gcc \
+        curl \
+        ca-certificates \
+        gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-RUN uv venv /app/.venv
-ENV VIRTUAL_ENV=/app/.venv
-ENV PATH="/app/.venv/bin:$PATH"
-ENV UV_LINK_MODE=copy
+WORKDIR /usr/src/app/example-app
 
-# Download and install dependencies first (without project) for better caching
-COPY pyproject.toml uv.lock README.md ./
+COPY pyproject.toml /usr/src/app/pyproject.toml
+COPY README.md /usr/src/app/README.md
+COPY mountaineer_email /usr/src/app/mountaineer_email
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project
+COPY example-app/pyproject.toml example-app/uv.lock example-app/README.md ./
+COPY example-app/example_app/views/package.json example-app/example_app/views/package-lock.json ./example_app/views/
 
-# Copy application code and install project
-COPY example_app ./example_app
-COPY --from=node-dependencies /usr/src/app/node_modules ./example_app/views/node_modules
+RUN uv venv --python python3.12
+ENV VIRTUAL_ENV=/usr/src/app/example-app/.venv
+ENV PATH="/usr/src/app/example-app/.venv/bin:$PATH"
+# The build step imports the app controller, which validates the database config.
+# Compose overrides these at runtime, but we need stable defaults inside the image.
+ENV POSTGRES_HOST=postgres \
+    POSTGRES_PORT=5432 \
+    POSTGRES_USER=example_app \
+    POSTGRES_PASSWORD=mysecretpassword \
+    POSTGRES_DB=example_app_db \
+    ENVIRONMENT=development
 
-# Build the frontend/script files
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv run build
+RUN uv sync --frozen --no-install-project
+RUN npm install --prefix /usr/src/app/example-app/example_app/views
 
-#
-# Final stage
-#
-FROM python:3.11-slim-bookworm as final
+COPY example-app/example_app ./example_app
 
-ARG ENVIRONMENT=development
-ENV ENVIRONMENT=${ENVIRONMENT}
+RUN uv sync --frozen
+RUN uv run --no-sync build
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl dnsutils iputils-ping \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+EXPOSE 3000
 
-# Create and switch to a new user
-RUN useradd --create-home appuser
-WORKDIR /app
-
-COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
-COPY --from=builder --chown=appuser:appuser /app/example_app ./example_app
-
-USER appuser
-
-ENV VIRTUAL_ENV=/app/.venv
-ENV PATH="/app/.venv/bin:$PATH"
-
-EXPOSE 80
-
-# Run the application
-CMD ["uvicorn", "example_app.main:app", "--host", "0.0.0.0", "--port", "80"]
+CMD ["uv", "run", "runserver", "--host", "0.0.0.0", "--port", "3000"]

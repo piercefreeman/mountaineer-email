@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from fastapi import Request
 from inflection import underscore
 from pydantic import BaseModel
 
@@ -171,6 +172,36 @@ async def test_generate_email(
     )
 
     assert "MY_DYNAMIC_VALUE" in result.html_body
+
+
+@pytest.mark.asyncio
+async def test_generate_email_with_request_scope(
+    mock_application_view: Path,
+    app_controller: AppController,
+):
+    subprocess.run(["npm", "install"], cwd=mock_application_view, check=True)
+
+    email_controller = ExampleEmailController()
+    app_controller.register(email_controller)
+
+    await simple_build(app_controller)
+    email_controller.resolve_paths(app_controller._view_root, force=True)
+
+    request = Request(
+        scope={
+            "type": "http",
+            "path": "/admin/email/example_email",
+            "path_params": {},
+            "query_string": b"",
+            "headers": [],
+        }
+    )
+    result = await email_controller._generate_email(
+        initial_data=ExampleData(value="REQUEST_VALUE"),
+        request=request,
+    )
+
+    assert "REQUEST_VALUE" in result.html_body
 
 
 def test_get_input_model():

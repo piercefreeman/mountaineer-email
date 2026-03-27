@@ -1,21 +1,64 @@
 from abc import abstractmethod
+from contextlib import AsyncExitStack, asynccontextmanager
 from inspect import isawaitable, isclass, signature
 from typing import Any, Coroutine, Generic, ParamSpec, cast
 from uuid import uuid4
 
-from fastapi import params
+from fastapi import Request, params
+from fastapi.dependencies.utils import get_dependant, solve_dependencies
 from pydantic import BaseModel
 
 from mountaineer import ControllerBase, ManagedViewPath
-from mountaineer.dependencies import (
-    get_function_dependencies,
-    isolate_dependency_only_function,
-)
+from mountaineer.dependencies import isolate_dependency_only_function
 from mountaineer.ssr import render_ssr
 
 from mountaineer_email.render import EmailRenderBase, FilledOutEmail
 
 RenderParameters = ParamSpec("RenderParameters")
+
+
+@asynccontextmanager
+async def resolve_email_dependencies(
+    *,
+    callable: Any,
+    request: Request | None = None,
+    url: str = "/synthetic",
+):
+    dependant = get_dependant(call=callable, path=url)
+
+    async with AsyncExitStack() as async_exit_stack:
+        if not request:
+            request = Request(
+                scope={
+                    "type": "http",
+                    "path": url,
+                    "path_params": {},
+                    "query_string": b"",
+                    "headers": [],
+                    "fastapi_inner_astack": async_exit_stack,
+                    "fastapi_function_astack": async_exit_stack,
+                }
+            )
+        else:
+            request.scope.setdefault("fastapi_inner_astack", async_exit_stack)
+            request.scope.setdefault("fastapi_function_astack", async_exit_stack)
+
+        payload = await solve_dependencies(
+            request=request,
+            dependant=dependant,
+            async_exit_stack=async_exit_stack,
+            embed_body_fields=False,
+        )
+        if payload.background_tasks:
+            raise RuntimeError(
+                "Background tasks are not supported when calling a static function, due to undesirable side-effects."
+            )
+        if payload.errors:
+            raise RuntimeError(
+                f"Errors encountered while resolving dependencies: {payload.errors}"
+            )
+
+        yield payload.values
 
 
 class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParameters]):
@@ -55,10 +98,15 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
         pass
 
     async def _generate_email(
-        self, *args: RenderParameters.args, **kwargs: RenderParameters.kwargs
+        self,
+        *args: RenderParameters.args,
+        request: Request | None = None,
+        **kwargs: RenderParameters.kwargs,
     ) -> FilledOutEmail:
-        async with get_function_dependencies(
-            callable=isolate_dependency_only_function(self.render)
+        async with resolve_email_dependencies(
+            callable=isolate_dependency_only_function(self.render),
+            request=request,
+            url=self.url,
         ) as values:
             server_data_raw = self.render(*args, **kwargs, **values)
             if isawaitable(server_data_raw):
