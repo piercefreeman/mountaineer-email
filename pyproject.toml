@@ -3,14 +3,13 @@ name = "mountaineer-email"
 version = "0.1.0"
 description = ""
 authors = [
-    { name = "Pierce Freeman", email = "piercefreeman@gmail.com" },
+    { name = "Pierce Freeman", email = "pierce@freeman.vc" },
 ]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic-settings>=2.2.1",
     "lxml>=5.1.0",
-    "grpcio>=1.71.2",
     # for now, flexible to version but requires them present
     # during execution
     "mountaineer-cloud",
@@ -41,18 +40,13 @@ dev = [
     "pytest>=8.0.2",
     "pytest-asyncio>=0.23.5",
     "lxml-stubs>=0.5.1",
-    "types-aioboto3[ses]>=12.3.0",
     "httpx>=0.27.0",
-    "mountaineer>=0.10.0.dev3",
-    #"mountaineer",
-    "mountaineer-auth",
-    "mountaineer-cloud[mocks]",
+    "ty>=0.0.26",
 ]
 
 [tool.uv.sources]
 #mountaineer = { path = "../../mountaineer", editable = true }
-mountaineer-auth = { path = "../mountaineer-auth", editable = true }
-mountaineer-cloud = { path = "../mountaineer-cloud", editable = true }
+#mountaineer-cloud = { path = "../mountaineer-cloud", editable = true }
 
 [tool.mypy]
 warn_return_any = true
@@ -79,7 +73,6 @@ combine-as-imports = true
 [tool.ruff.lint.isort.sections]
 mountaineer = [
     "mountaineer",
-    "mountaineer_auth",
     "mountaineer_cloud",
 ]
 

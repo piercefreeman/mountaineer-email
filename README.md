@@ -4,7 +4,7 @@ Dependencies to easily format and send email with Mountaineer or FastAPI.
 
 ## Getting Started
 
-Since email deliverability is nearly zero if you send with local linux utilities, you'll almost always want to use a 3rd party service. AWS SES and Resend are two of the most popular. This package is vendor agnostic and instead delegates the email sending to [mountaineer-cloud](https://github.com/piercefreeman/mountaineer-cloud). `mountaineer-email` providers.
+Since email deliverability is nearly zero if you send with local linux utilities, you'll almost always want to use a 3rd party service. This package is provider agnostic and delegates delivery integrations to [mountaineer-cloud](https://github.com/piercefreeman/mountaineer-cloud) provider packages such as Resend.
 
 TODO: Full example
 
@@ -122,31 +122,7 @@ controller = AppController(
 controller.register(emails.WelcomeEmailController())
 ```
 
-To send the email, you'll want to import your daemon client:
-
-```python
-from mountaineer_email import SendEmail, SendEmailInput
-
-class MyController(ControllerBase):
-    ...
-
-    @passthrough
-    async def send_email(
-        self,
-        user: models.User = Depends(AuthDependencies.require_valid_user),
-        daemon_client: DaemonClient = Depends(DaemonDependencies.get_daemon_client),
-    ):
-        await daemon_client.run_workflow(
-            SendEmail,
-            f"send_email_{uuid4()}",
-            SendEmailInput.from_email_input(
-                EmailController,
-                email_input=EmailControllerRequest(
-                    user_id=new_user.id,
-                ),
-            ),
-        )
-```
+`mountaineer-email` only owns the rendering and preview flow. Provider-specific delivery settings should come from the matching `mountaineer-cloud` provider config, for example `ResendConfig` if you're sending through Resend.
 
 ### Inliner
 
@@ -172,11 +148,12 @@ export default Email;
 
 ## Admin Panel
 
-We bundle an admin panel that allows you to preview your emails with different imports. You'll have to add these explicitly to your AppController.
+We bundle an admin panel that allows you to preview your emails with different imports. You'll have to add these explicitly to your AppController. We suggest conditionally adding these to your webservice if you're running locally:
 
 ```python
 import mountaineer_email.controllers as email_admin_controllers
 
-controller.register(email_admin_controllers.EmailHomeController())
-controller.register(email_admin_controllers.EmailDetailController())
+if ENV == "development":
+    controller.register(email_admin_controllers.EmailHomeController())
+    controller.register(email_admin_controllers.EmailDetailController())
 ```

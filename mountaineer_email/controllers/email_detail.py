@@ -1,7 +1,6 @@
 from json import loads as json_loads
 from typing import cast
 
-from fastapi import Depends
 from inflection import underscore
 from lxml.html import fromstring as html_fromstring, tostring as html_tostring
 from pydantic import BaseModel
@@ -13,7 +12,6 @@ from mountaineer import (
     Metadata,
     RenderBase,
 )
-from mountaineer_auth import AuthDependencies, UserAuthMixin
 
 from mountaineer_email.controller import (
     EmailControllerBase,
@@ -64,7 +62,6 @@ class EmailDetailController(ControllerBase):
         self,
         email_short: str,
         mock_body: str | None = None,
-        user: UserAuthMixin = Depends(AuthDependencies.require_admin_user),
     ) -> EmailDetailRender:
         """
         Render the given email, optionally with mocked body values that will
@@ -102,14 +99,13 @@ class EmailDetailController(ControllerBase):
             try:
                 mock_body_echo = json_loads(mock_body)
                 parsed_email_body = (
-                    variable_input.parse_obj(mock_body_echo) if variable_input else None
+                    variable_input.model_validate(mock_body_echo)
+                    if variable_input
+                    else None
                 )
                 # Our wrapped render will be async, even if the render() method
-                rendered = cast(
-                    FilledOutEmail,
-                    await email._generate_email(
-                        **({variable_key: parsed_email_body} if variable_key else {})
-                    ),  # type: ignore
+                rendered = await email._generate_email(
+                    **({variable_key: parsed_email_body} if variable_key else {})
                 )
 
                 # Re-parse the HTML to make it more readable
