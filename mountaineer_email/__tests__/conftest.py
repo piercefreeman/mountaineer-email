@@ -6,7 +6,9 @@ import pytest
 import pytest_asyncio
 
 from mountaineer import AppController, PostCSSBundler
-from mountaineer_cloud.test_utilities.fixtures import get_mock_aws
+from mountaineer_cloud.test_utilities.fixtures import (
+    get_mock_aws,
+)
 
 from mountaineer_email.__tests__ import conf_models as models
 from mountaineer_email.registry import clear_email_registry as _clear_email_registry
@@ -32,11 +34,11 @@ def config(email_app_controller: AppController):
         EMAIL_SENDER_ADDRESS="test@example.com",
         EMAIL_SENDER_NAME="Test User",
         EMAIL_CONTROLLER_CONTEXT=lambda: email_app_controller,
-        AWS_ACCESS_KEY="ses-access-key",
-        AWS_SECRET_KEY="ses-secret-key",
-        AWS_REGION_NAME="us-west-2",
-        AWS_ROLE_ARN="test-role",
-        AWS_ROLE_SESSION_NAME="test-session-name",
+        AWS_ACCESS_KEY="ses-access-key",  # ty: ignore[unknown-argument]
+        AWS_SECRET_KEY="ses-secret-key",  # ty: ignore[unknown-argument]
+        AWS_REGION_NAME="us-west-2",  # ty: ignore[unknown-argument]
+        AWS_ROLE_ARN="test-role",  # ty: ignore[unknown-argument]
+        AWS_ROLE_SESSION_NAME="test-session-name",  # ty: ignore[unknown-argument]
     )
 
 

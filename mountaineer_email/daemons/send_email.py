@@ -1,12 +1,18 @@
 from datetime import timedelta
-from typing import Any, Type, TypeVar, cast
+from typing import Any, Type, TypeVar
 
 import aioboto3
 from pydantic import BaseModel
-from rappel import Depend, RetryPolicy, Workflow, action, workflow
+from waymark import (  # ty: ignore[unresolved-import]
+    Depend,
+    RetryPolicy,
+    Workflow,
+    action,
+    workflow,
+)
 
 from mountaineer import CoreDependencies
-from mountaineer_cloud.aws import AWSDependencies
+from mountaineer_cloud.aws import AWSDependencies  # ty: ignore[unresolved-import]
 
 from mountaineer_email.config import EmailConfig
 from mountaineer_email.controller import EmailControllerBase
@@ -104,8 +110,7 @@ async def render_email(payload: SendEmailInput) -> FilledOutEmail:
     _, email_model = email_controller.get_input_model()
     email_input = email_model.model_validate(payload.email_input)
 
-    # @pierce: 03-08-2024 - This shouldn't require a cast but pyright throws an issue about Any return mismatch values
-    return cast(FilledOutEmail, await email_controller._generate_email(email_input))
+    return await email_controller._generate_email(email_input)
 
 
 def get_email_config():
@@ -150,7 +155,7 @@ async def send_email(
             # For any others, we let them raise and get auto-retried
             return SendEmailResponse(
                 success=False,
-                permanent_failure=e.response["Error"]["Message"],  # type: ignore
+                permanent_failure=e.response["Error"]["Message"],
             )
 
     return SendEmailResponse(success=True, message_id=response["MessageId"])

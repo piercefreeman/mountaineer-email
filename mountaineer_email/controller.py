@@ -60,7 +60,7 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
         async with get_function_dependencies(
             callable=isolate_dependency_only_function(self.render)
         ) as values:
-            server_data_raw = self.render(*args, **kwargs, **values)  # type: ignore
+            server_data_raw = self.render(*args, **kwargs, **values)
             if isawaitable(server_data_raw):
                 server_data_raw = await server_data_raw
             server_data = cast(EmailRenderBase, server_data_raw)

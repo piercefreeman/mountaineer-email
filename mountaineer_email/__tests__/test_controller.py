@@ -6,11 +6,11 @@ import pytest
 from inflection import underscore
 from pydantic import BaseModel
 
-from mountaineer import (  # type: ignore
+from mountaineer import (
     AppController,
     LinkAttribute,
     Metadata,
-    mountaineer as mountaineer_rs,  # type: ignore
+    mountaineer as mountaineer_rs,  # ty: ignore[unresolved-import]
 )
 from mountaineer.client_builder.builder import APIBuilder
 from mountaineer.client_compiler.compile import ClientCompiler

@@ -1,6 +1,6 @@
 import pytest
 from pydantic import BaseModel
-from rappel import provide_dependencies
+from waymark import provide_dependencies  # ty: ignore[unresolved-import]
 
 from mountaineer_cloud.test_utilities import MockAWS
 

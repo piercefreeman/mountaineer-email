@@ -1,4 +1,4 @@
-from fastapi import Depends, Request
+from fastapi import Request
 from inflection import underscore
 from pydantic import BaseModel
 
@@ -9,7 +9,6 @@ from mountaineer import (
     Metadata,
     RenderBase,
 )
-from mountaineer_auth import AuthDependencies, UserAuthMixin
 
 from mountaineer_email.controller import EmailControllerBase
 from mountaineer_email.registry import get_registered_email_controllers
@@ -35,7 +34,6 @@ class EmailHomeController(ControllerBase):
     async def render(
         self,
         request: Request,
-        user: UserAuthMixin = Depends(AuthDependencies.require_admin_user),
     ) -> EmailHomeRender:
         # Find all emails registered with the registry
         registered_controllers = get_registered_email_controllers()
