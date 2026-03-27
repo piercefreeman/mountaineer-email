@@ -49,7 +49,7 @@ dev = [
 
 [tool.uv.sources]
 #mountaineer = { path = "../../mountaineer", editable = true }
-mountaineer-cloud = { path = "../mountaineer-cloud", editable = true }
+#mountaineer-cloud = { path = "../mountaineer-cloud", editable = true }
 
 [tool.mypy]
 warn_return_any = true

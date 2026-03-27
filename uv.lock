@@ -1076,40 +1076,20 @@ wheels = [
 [[package]]
 name = "mountaineer-cloud"
 version = "0.1.0"
-source = { editable = "../mountaineer-cloud" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aioboto3" },
-    { name = "httpx" },
     { name = "pydantic-settings" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/15/c4/36e7741de5165d5cdefc2d92bb4706b7c0e3678227d8cdcbcb1b1d29962a/mountaineer_cloud-0.1.0.tar.gz", hash = "sha256:c70eed19e24528a7f9d7ad1b3f7c815c400d071cfde829d743da52ce777e12be", size = 964856, upload-time = "2026-03-26T20:48:01.597Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5b/4c/82f7660160a357d7a68efb8139d3e30a291f0681a2890e4a5b8db7e303c5/mountaineer_cloud-0.1.0-py3-none-any.whl", hash = "sha256:73d4b0e4b34d535e074389077ac9be64ec0c7f99daf6352ef6cd75b8d6fa0b91", size = 36615, upload-time = "2026-03-26T20:47:59.899Z" },
 ]
 
 [package.optional-dependencies]
 mocks = [
     { name = "moto", extra = ["all", "server"] },
     { name = "types-aiobotocore", extra = ["full"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aioboto3", specifier = ">=14.0.0" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "moto", extras = ["all", "server"], marker = "extra == 'mocks'", specifier = ">=5.0.0" },
-    { name = "pydantic-settings", specifier = ">=2.2.1" },
-    { name = "types-aiobotocore", extras = ["full"], marker = "extra == 'mocks'", specifier = ">=2.20.0" },
-]
-provides-extras = ["mocks"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "brotli", specifier = ">=1.1.0" },
-    { name = "iceaxe", specifier = ">=0.10.0" },
-    { name = "moto", extras = ["all", "server"], specifier = ">=5.0.0" },
-    { name = "mountaineer", specifier = ">=0.10.0.dev2" },
-    { name = "pytest", specifier = ">=8.0.2" },
-    { name = "pytest-asyncio", specifier = ">=0.23.5.post1" },
-    { name = "ruff", specifier = ">=0.3.1" },
-    { name = "ty", specifier = ">=0.0.22" },
-    { name = "types-aioboto3", extras = ["full"], specifier = ">=12.3.0" },
 ]
 
 [[package]]
@@ -1143,7 +1123,7 @@ requires-dist = [
     { name = "grpcio", specifier = ">=1.71.2" },
     { name = "lxml", specifier = ">=5.1.0" },
     { name = "mountaineer" },
-    { name = "mountaineer-cloud", editable = "../mountaineer-cloud" },
+    { name = "mountaineer-cloud" },
     { name = "pydantic-settings", specifier = ">=2.2.1" },
 ]
 
@@ -1151,7 +1131,7 @@ requires-dist = [
 dev = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "lxml-stubs", specifier = ">=0.5.1" },
-    { name = "mountaineer-cloud", extras = ["mocks"], editable = "../mountaineer-cloud" },
+    { name = "mountaineer-cloud", extras = ["mocks"] },
     { name = "mypy", specifier = ">=1.8.0" },
     { name = "pyright", specifier = ">=1.1.352" },
     { name = "pytest", specifier = ">=8.0.2" },
