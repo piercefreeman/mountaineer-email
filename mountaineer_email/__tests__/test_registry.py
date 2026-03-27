@@ -30,7 +30,6 @@ class SampleEmailController(EmailControllerBase):
             message=data.message,
             email_metadata=EmailMetadata(
                 subject="Test Subject",
-                to_email="test@example.com",
             ),
         )
 
@@ -43,7 +42,6 @@ class AnotherSampleEmailController(EmailControllerBase):
             message=f"Another: {data.message}",
             email_metadata=EmailMetadata(
                 subject="Another Test Subject",
-                to_email="another@example.com",
             ),
         )
 

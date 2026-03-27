@@ -219,7 +219,6 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
             )
 
         return FilledOutEmail(
-            to_email=server_data.email_metadata.to_email,
             subject=server_data.email_metadata.subject,
             html_body=page_contents,
         )

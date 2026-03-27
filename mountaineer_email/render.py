@@ -6,7 +6,6 @@ from mountaineer.render import ReturnModelMetaclass
 
 
 class EmailMetadata(BaseModel):
-    to_email: str
     subject: str
 
 
@@ -16,6 +15,12 @@ class EmailModelMetaclass(ReturnModelMetaclass):
 
 
 class EmailRenderBase(RenderBase, metaclass=EmailModelMetaclass):
+    """
+    Values placed into the email renderbase will be accessible to the controller
+    via its `useServer()` hook.
+
+    """
+
     email_metadata: EmailMetadata = Field(exclude=True)
 
     model_config = {
@@ -26,6 +31,5 @@ class EmailRenderBase(RenderBase, metaclass=EmailModelMetaclass):
 
 
 class FilledOutEmail(BaseModel):
-    to_email: str
     subject: str
     html_body: str

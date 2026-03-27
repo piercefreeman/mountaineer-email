@@ -107,7 +107,6 @@ class ExampleEmailController(EmailControllerBase):
             initial_value=initial_data.value,
             email_metadata=EmailMetadata(
                 subject=f"Hello, World! {initial_data.value}",
-                to_email="user@example.com",
             ),
             metadata=Metadata(
                 links=[

@@ -50,7 +50,6 @@ class InjectedTemplateController(EmailControllerBase):
             message=payload.message,
             email_metadata=EmailMetadata(
                 subject=f"Hello {payload.recipient_name}",
-                to_email="integration@example.com",
             ),
             metadata=Metadata(
                 links=[
@@ -150,7 +149,6 @@ async def test_dependency_injection_renders_email_template(
 
     assert isinstance(result, FilledOutEmail)
     assert result.subject == "Hello Ada"
-    assert result.to_email == "integration@example.com"
     assert "Hello" in result.html_body
     assert "Ada" in result.html_body
     assert "Integration coverage for dependency injection." in result.html_body

@@ -6,7 +6,83 @@ Dependencies to easily format and send email with Mountaineer or FastAPI.
 
 Since email deliverability is nearly zero if you send with local linux utilities, you'll almost always want to use a 3rd party service. This package is provider agnostic and delegates delivery integrations to [mountaineer-cloud](https://github.com/piercefreeman/mountaineer-cloud) provider packages such as Resend.
 
-TODO: Full example
+The core flow is:
+
+1. Define an `EmailControllerBase` with a typed payload model.
+2. Register that controller on your `AppController`.
+3. Inject the mounted email template with `Depends(get_email_template(...))`.
+4. Call `await template.render(...)` with your payload to produce a `FilledOutEmail`.
+
+```python
+from fastapi import Depends
+from pydantic import BaseModel
+
+from mountaineer import AppController
+from mountaineer_cloud.primitives import EmailBody, EmailMessage, EmailRecipient
+from mountaineer_cloud.providers.resend import ResendCore, ResendDependencies
+from mountaineer_email import (
+    EmailControllerBase,
+    EmailMetadata,
+    EmailRenderBase,
+    get_email_template,
+)
+
+
+class WelcomeEmailPayload(BaseModel):
+    first_name: str
+    last_name: str
+
+
+class WelcomeEmailRender(EmailRenderBase):
+    name: str
+
+
+class WelcomeEmailController(EmailControllerBase):
+    view_path = "emails/welcome/page.tsx"
+
+    async def render(
+        self,
+        payload: WelcomeEmailPayload,
+    ) -> WelcomeEmailRender:
+        name = f"{payload.first_name} {payload.last_name}"
+
+        return WelcomeEmailRender(
+            name=name,
+            email_metadata=EmailMetadata(
+                subject=f"Welcome {name}",
+            ),
+        )
+
+
+controller = AppController()
+controller.register(WelcomeEmailController())
+
+
+async def send_welcome_email(
+    template: WelcomeEmailController = Depends(
+        get_email_template(WelcomeEmailController)
+    ),
+    resend: ResendCore = Depends(ResendDependencies.get_resend_core),
+) -> str:
+    filled_email = await template.render(
+        WelcomeEmailPayload(
+            first_name="Ada",
+            last_name="Lovelace",
+        )
+    )
+
+    message = EmailMessage[ResendCore](
+        sender=EmailRecipient(
+            email="noreply@example.com",
+            display_name="Example App",
+        ),
+        recipient=EmailRecipient(email="ada@example.com"),
+        subject=filled_email.subject,
+        body=EmailBody(html=filled_email.html_body),
+    )
+
+    return await message.send(resend)
+```
 
 ## Designing
 
@@ -96,7 +172,6 @@ class WelcomeEmailController(EmailControllerBase[WelcomeEmailRequest]):
             user_name=user.name,
             email_metadata=EmailMetadata(
                 subject="Welcome!",
-                to_email=user.email,
             ),
             metadata=Metadata(
                 links=[LinkAttribute(rel="stylesheet", href="/static/auth_main.css")]
