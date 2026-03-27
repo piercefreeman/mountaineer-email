@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from fastapi import Request
@@ -225,7 +226,7 @@ async def test_render_helper_with_dict_payload(
     await simple_build(app_controller)
     email_controller.resolve_paths(app_controller._view_root, force=True)
 
-    result = await email_controller.render({"value": "DICT_RENDER_VALUE"})
+    result = await cast(Any, email_controller).render({"value": "DICT_RENDER_VALUE"})
 
     assert isinstance(result, FilledOutEmail)
     assert "DICT_RENDER_VALUE" in result.html_body
