@@ -122,32 +122,6 @@ controller = AppController(
 controller.register(emails.WelcomeEmailController())
 ```
 
-To send the email, you'll want to import your daemon client:
-
-```python
-from mountaineer_email import SendEmail, SendEmailInput
-
-class MyController(ControllerBase):
-    ...
-
-    @passthrough
-    async def send_email(
-        self,
-        user: models.User = Depends(AuthDependencies.require_valid_user),
-        daemon_client: DaemonClient = Depends(DaemonDependencies.get_daemon_client),
-    ):
-        await daemon_client.run_workflow(
-            SendEmail,
-            f"send_email_{uuid4()}",
-            SendEmailInput.from_email_input(
-                EmailController,
-                email_input=EmailControllerRequest(
-                    user_id=new_user.id,
-                ),
-            ),
-        )
-```
-
 ### Inliner
 
 To inline Tailwind (similar to the juice package), we recommend you use `@react-email/tailwind` since it has a lot of helper utilities out of the box for tailwind's variables:
@@ -172,11 +146,12 @@ export default Email;
 
 ## Admin Panel
 
-We bundle an admin panel that allows you to preview your emails with different imports. You'll have to add these explicitly to your AppController.
+We bundle an admin panel that allows you to preview your emails with different imports. You'll have to add these explicitly to your AppController. We suggest conditionally adding these to your webservice if you're running locally:
 
 ```python
 import mountaineer_email.controllers as email_admin_controllers
 
-controller.register(email_admin_controllers.EmailHomeController())
-controller.register(email_admin_controllers.EmailDetailController())
+if ENV == "development":
+    controller.register(email_admin_controllers.EmailHomeController())
+    controller.register(email_admin_controllers.EmailDetailController())
 ```
