@@ -249,9 +249,38 @@ async def send_preview(
     template: WelcomeEmailController = Depends(
         get_email_template(WelcomeEmailController)
     ),
-):
+) -> FilledOutEmail:
     filled_email = await template.render(
         WelcomeEmailRequest(user_id=user_id),
+    )
+```
+
+To send the same email in a background workflow, we provide a convenience workflow that you can use in your own apps. Serialize the controller reference in the main app and pass the request payload through to `SendEmail`. This lets the worker reload the controller later, even though it does not have the full Mountaineer app graph mounted:
+
+```python
+from uuid import UUID
+
+from pydantic import BaseModel, EmailStr
+
+from mountaineer_email import SendEmail
+from mountaineer_email.registry import serialize_controller
+from my_app.email.welcome import WelcomeEmailController, WelcomeEmailRequest
+
+async def enqueue_welcome_email(
+    *,
+    user_id: UUID,
+    user_email: EmailStr,
+    user_name: str | None,
+) -> None:
+    workflow = SendEmail()
+
+    await workflow.run(
+        email_controller=serialize_controller(WelcomeEmailController),
+        email_input=WelcomeEmailRequest(user_id=user_id).model_dump(mode="json"),
+        to_email=str(user_email),
+        to_name=user_name,
+        from_email="noreply@example.com",
+        from_name="Example App",
     )
 ```
 
