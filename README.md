@@ -9,7 +9,7 @@ Since email deliverability is nearly zero if you send with local linux utilities
 The core flow is:
 
 1. Define an `EmailControllerBase` with a typed payload model.
-2. Register that controller on your `AppController`.
+2. Register that controller on your `AppController`. If you want the bundled preview/admin UI, also register the `mountaineer-email` plugin.
 3. Inject the mounted email template with `Depends(get_email_template(...))`.
 4. Call `await template.render(...)` with your payload to produce a `FilledOutEmail`.
 
@@ -210,9 +210,11 @@ class WelcomeEmailController(EmailControllerBase[WelcomeEmailRequest]):
         )
 ```
 
-Then add these controllers to your AppController:
+Then register your application's email controllers on the `AppController`. If you want the bundled email admin routes, register the plugin separately:
 
 ```python
+from mountaineer_email.plugin import plugin as email_plugin
+
 from myproject import emails
 
 controller = AppController(
@@ -226,7 +228,12 @@ controller = AppController(
 )
 
 controller.register(emails.WelcomeEmailController())
+
+if ENV == "development":
+    controller.register(email_plugin)
 ```
+
+Registering `email_plugin` only adds the bundled preview controllers and their prebuilt assets. Your own `EmailControllerBase` subclasses still need their own `controller.register(...)` calls so Mountaineer can build and resolve them.
 
 `mountaineer-email` only owns the rendering and preview flow. Provider-specific delivery settings should come from the matching `mountaineer-cloud` provider config, for example `ResendConfig` if you're sending through Resend.
 
@@ -272,15 +279,16 @@ export default Email;
 
 ## Admin Panel
 
-We bundle an admin panel that allows you to preview your emails with different imports. You'll have to add these explicitly to your AppController. We suggest conditionally adding these to your webservice if you're running locally:
+We bundle an admin panel at `/admin/email/` that lets you preview registered email controllers. Mountaineer plugins are registered directly on `AppController`, so add the packaged plugin instead of manually instantiating `EmailHomeController` and `EmailDetailController`:
 
 ```python
-import mountaineer_email.controllers as email_admin_controllers
+from mountaineer_email.plugin import plugin as email_plugin
 
 if ENV == "development":
-    controller.register(email_admin_controllers.EmailHomeController())
-    controller.register(email_admin_controllers.EmailDetailController())
+    controller.register(email_plugin)
 ```
+
+This only mounts the preview UI. Continue to register each application email controller normally, for example `controller.register(emails.WelcomeEmailController())`.
 
 ## Development
 
