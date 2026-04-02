@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
 from datetime import timedelta
 from inspect import isclass
 from typing import Any, Generic, TypeVar, cast
@@ -8,13 +7,11 @@ from typing import Any, Generic, TypeVar, cast
 from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from waymark import Depend, RetryPolicy, Workflow, action, workflow
 
-from mountaineer.config import get_config
-from mountaineer.dependencies import get_function_dependencies
 from mountaineer_cloud.primitives import EmailBody, EmailMessage, EmailRecipient
-from mountaineer_cloud.providers.definition import resolve_cloud_by_config
 from mountaineer_cloud.providers_common.email import EmailProviderCore
 
 from mountaineer_email.controller import EmailControllerBase
+from mountaineer_email.deps import get_email_core
 from mountaineer_email.registry import (
     SerializedEmailController,
     deserialize_controller,
@@ -24,13 +21,9 @@ from mountaineer_email.registry import (
 
 RenderInput = TypeVar("RenderInput", bound=BaseModel)
 
-
-def _get_controller_input_model(
-    controller: SerializedEmailController[Any],
-) -> type[BaseModel]:
-    controller_cls = deserialize_controller_class(controller)
-    _, input_model = controller_cls().get_input_model()
-    return input_model
+#
+# Workflow
+#
 
 
 class SendEmailInput(BaseModel, Generic[RenderInput]):
@@ -43,7 +36,12 @@ class SendEmailInput(BaseModel, Generic[RenderInput]):
     identity and its known on-disk locations so the workflow can reload the
     controller module and render with the same resolved assets later.
     """
-    email_controller: SerializedEmailController[RenderInput]
+
+    email_controller: (
+        SerializedEmailController[RenderInput]
+        | type[EmailControllerBase[RenderInput]]
+        | EmailControllerBase[RenderInput]
+    )
     email_input: RenderInput | BaseModel | dict[str, Any]
     to_email: EmailStr
     to_name: str | None = None
@@ -53,16 +51,17 @@ class SendEmailInput(BaseModel, Generic[RenderInput]):
     @field_validator("email_controller", mode="before")
     @classmethod
     def serialize_email_controller_reference(cls, value: Any) -> Any:
-        if (isclass(value) and issubclass(value, EmailControllerBase)) or isinstance(
-            value, EmailControllerBase
-        ):
-            return serialize_controller(value)
-
-        return value
+        """Normalize controller inputs into a serialized controller payload."""
+        return _normalize_email_controller_reference(value)
 
     @model_validator(mode="after")
     def validate_email_input_matches_controller(self) -> "SendEmailInput[RenderInput]":
-        input_model = _get_controller_input_model(self.email_controller)
+        """Coerce `email_input` into the controller's declared input model."""
+        serialized_controller = _normalize_email_controller_reference(
+            self.email_controller
+        )
+        self.email_controller = serialized_controller
+        input_model = _get_controller_input_model(serialized_controller)
         if isinstance(self.email_input, input_model):
             return self
 
@@ -76,6 +75,7 @@ class SendEmailInput(BaseModel, Generic[RenderInput]):
             input_model.model_validate(raw_input),
         )
         return self
+
 
 @workflow
 class SendEmail(Workflow):
@@ -108,6 +108,11 @@ class SendEmail(Workflow):
         )
 
 
+#
+# Actions
+#
+
+
 class ConstructedEmail(BaseModel):
     to_email: EmailStr
     to_name: str | None = None
@@ -121,27 +126,6 @@ class SendEmailResult(BaseModel):
     message_id: str
 
 
-async def get_email_core() -> AsyncGenerator[EmailProviderCore[Any], None]:
-    config = get_config()
-    matching_providers = resolve_cloud_by_config(config, EmailProviderCore)
-
-    if len(matching_providers) > 1:
-        raise TypeError(
-            "Config matches multiple email providers. "
-            "Email workflows require exactly one configured email provider."
-        )
-    if not matching_providers:
-        raise TypeError(
-            "Config must expose exactly one mountaineer-cloud email provider."
-        )
-
-    provider = matching_providers[0]
-    async with get_function_dependencies(callable=provider.injection_function) as deps:
-        async for core in provider.injection_function(**deps):
-            yield cast(EmailProviderCore[Any], core)
-    return
-
-
 @action
 async def construct_email(
     email_controller: SerializedEmailController[Any],
@@ -151,6 +135,7 @@ async def construct_email(
     to_name: str | None = None,
     from_name: str | None = None,
 ) -> ConstructedEmail:
+    """Render an email controller into a concrete email payload."""
     payload = SendEmailInput(
         email_controller=email_controller,
         email_input=email_input,
@@ -159,7 +144,9 @@ async def construct_email(
         from_email=from_email,
         from_name=from_name,
     )
-    controller_instance = deserialize_controller(payload.email_controller)
+    controller_instance = deserialize_controller(
+        _normalize_email_controller_reference(payload.email_controller)
+    )
     rendered_email = await controller_instance.render_obj(payload.email_input)
 
     return ConstructedEmail(
@@ -175,8 +162,9 @@ async def construct_email(
 @action
 async def send_constructed_email(
     payload: ConstructedEmail,
-    core: EmailProviderCore[Any] = Depend(get_email_core),  # type: ignore[assignment]
+    core: EmailProviderCore[Any] = Depend(get_email_core),
 ) -> SendEmailResult:
+    """Send a rendered email payload through the configured provider."""
     message = EmailMessage[Any](
         sender=EmailRecipient(
             email=str(payload.from_email),
@@ -191,3 +179,29 @@ async def send_constructed_email(
     )
     message_id = await message.send(core)
     return SendEmailResult(message_id=message_id)
+
+
+#
+# Helpers
+#
+
+
+def _normalize_email_controller_reference(
+    value: SerializedEmailController[RenderInput]
+    | type[EmailControllerBase[RenderInput]]
+    | EmailControllerBase[RenderInput],
+) -> SerializedEmailController[RenderInput]:
+    if (isclass(value) and issubclass(value, EmailControllerBase)) or isinstance(
+        value, EmailControllerBase
+    ):
+        return serialize_controller(value)
+
+    return value
+
+
+def _get_controller_input_model(
+    controller: SerializedEmailController[Any],
+) -> type[BaseModel]:
+    controller_cls = deserialize_controller_class(controller)
+    _, input_model = controller_cls().get_input_model()
+    return input_model

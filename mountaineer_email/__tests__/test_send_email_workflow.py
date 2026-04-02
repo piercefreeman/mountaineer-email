@@ -16,7 +16,7 @@ from mountaineer_cloud.providers_common.email import (
 )
 
 from mountaineer_email import EmailControllerBase, EmailMetadata, EmailRenderBase
-from mountaineer_email.registry import serialize_controller
+from mountaineer_email.registry import SerializedEmailController, serialize_controller
 from mountaineer_email.render import FilledOutEmail
 from mountaineer_email.workflows.send_email import (
     ConstructedEmail,
@@ -118,6 +118,8 @@ async def test_construct_email_action() -> None:
         from_email="noreply@example.com",
         from_name="Example App",
     )
+    assert isinstance(payload.email_controller, SerializedEmailController)
+    assert isinstance(payload.email_input, BaseModel)
 
     result = await construct_email(
         email_controller=payload.email_controller,
@@ -184,7 +186,7 @@ async def test_send_email_workflow_runs_end_to_end_under_pytest() -> None:
 
     with register_config_in_context(config):
         with patch(
-            "mountaineer_email.workflows.send_email.resolve_cloud_by_config",
+            "mountaineer_email.deps.resolve_cloud_by_config",
             return_value=[fake_provider],
         ):
             workflow = SendEmail()
