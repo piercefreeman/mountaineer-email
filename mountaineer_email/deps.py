@@ -22,28 +22,26 @@ def get_email_template(
     """
 
     def dependency() -> EmailControllerType:
+        # Round-trip by looking up in our registry
         serialized_controller = serialize_controller(controller)
         return cast(EmailControllerType, deserialize_controller(serialized_controller))
 
     return dependency
 
 
-async def get_email_core() -> AsyncGenerator[EmailProviderCore[Any], None]:
+async def get_email_core(
+    # Allow any config as input
+    config: ConfigBase = Depends(CoreDependencies.get_config_with_type(ConfigBase)),
+) -> AsyncGenerator[EmailProviderCore[Any], None]:
     """
     Resolve the configured email provider core for dependency injection.
 
     """
-    config: ConfigBase = Depends(CoreDependencies.get_config_with_type(ConfigBase))
     matching_providers = resolve_cloud_by_config(config, EmailProviderCore)
 
-    if len(matching_providers) > 1:
+    if len(matching_providers) != 1:
         raise TypeError(
-            "Config matches multiple email providers. "
-            "Email workflows require exactly one configured email provider."
-        )
-    if not matching_providers:
-        raise TypeError(
-            "Config must expose exactly one mountaineer-cloud email provider."
+            f"Config must expose exactly one mountaineer-cloud email provider (currently configured: {len(matching_providers)})."
         )
 
     provider = matching_providers[0]
