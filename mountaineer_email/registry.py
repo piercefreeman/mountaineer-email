@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from importlib import import_module
 from inspect import isclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Generic, TypeVar, cast
 
 from pydantic import BaseModel
 
@@ -16,8 +16,10 @@ from mountaineer_email.controller import (
     EmailControllerBase,
 )
 
+RenderInput = TypeVar("RenderInput", bound=BaseModel)
 
-class SerializedEmailController(BaseModel):
+
+class SerializedEmailController(BaseModel, Generic[RenderInput]):
     module: str
     key: str
     view_root: str | None = None
@@ -30,17 +32,19 @@ class SerializedEmailController(BaseModel):
 
 
 def _controller_cls(
-    controller: type["EmailControllerBase"] | "EmailControllerBase",
-) -> type["EmailControllerBase"]:
+    controller: type["EmailControllerBase[RenderInput]"]
+    | "EmailControllerBase[RenderInput]",
+) -> type["EmailControllerBase[RenderInput]"]:
     if isclass(controller) and issubclass(controller, EmailControllerBase):
-        return controller
+        return cast(type[EmailControllerBase[RenderInput]], controller)
 
-    return controller.__class__
+    return cast(type[EmailControllerBase[RenderInput]], controller.__class__)
 
 
 def _controller_view_root(
-    controller: type["EmailControllerBase"] | "EmailControllerBase",
-    controller_cls: type["EmailControllerBase"],
+    controller: type["EmailControllerBase[RenderInput]"]
+    | "EmailControllerBase[RenderInput]",
+    controller_cls: type["EmailControllerBase[RenderInput]"],
 ) -> str | None:
     if (
         isinstance(controller, EmailControllerBase)
@@ -63,8 +67,9 @@ def _controller_view_root(
 
 
 def _controller_scripts_prefix(
-    controller: type["EmailControllerBase"] | "EmailControllerBase",
-    controller_cls: type["EmailControllerBase"],
+    controller: type["EmailControllerBase[RenderInput]"]
+    | "EmailControllerBase[RenderInput]",
+    controller_cls: type["EmailControllerBase[RenderInput]"],
     view_root: str | None,
 ) -> str | None:
     if (
@@ -85,7 +90,7 @@ def _controller_scripts_prefix(
     return None
 
 
-def _payload_to_registry_key(payload: SerializedEmailController) -> str:
+def _payload_to_registry_key(payload: SerializedEmailController[Any]) -> str:
     return f"{payload.module}:{payload.key}"
 
 
@@ -98,8 +103,9 @@ def _iter_email_controller_classes(
 
 
 def serialize_controller(
-    controller: type["EmailControllerBase"] | "EmailControllerBase",
-) -> SerializedEmailController:
+    controller: type["EmailControllerBase[RenderInput]"]
+    | "EmailControllerBase[RenderInput]",
+) -> SerializedEmailController[RenderInput]:
     """
     Serialize an email controller into a stable import reference.
 
@@ -117,8 +123,8 @@ def serialize_controller(
 
 
 def deserialize_controller_class(
-    payload: SerializedEmailController,
-) -> type["EmailControllerBase"]:
+    payload: SerializedEmailController[RenderInput],
+) -> type["EmailControllerBase[RenderInput]"]:
     """
     Resolve an email controller class from a serialized import reference.
 
@@ -140,10 +146,12 @@ def deserialize_controller_class(
             f"Resolved controller {payload.module}.{payload.key} is not an EmailControllerBase"
         )
 
-    return cast(type["EmailControllerBase"], controller_cls)
+    return cast(type["EmailControllerBase[RenderInput]"], controller_cls)
 
 
-def deserialize_controller(payload: SerializedEmailController) -> "EmailControllerBase":
+def deserialize_controller(
+    payload: SerializedEmailController[RenderInput],
+) -> "EmailControllerBase[RenderInput]":
     """
     Instantiate an email controller from a serialized import reference.
 

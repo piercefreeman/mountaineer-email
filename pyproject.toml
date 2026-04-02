@@ -1,6 +1,6 @@
 [project]
 name = "mountaineer-email"
-version = "0.1.0"
+version = "0.1.3"
 description = ""
 authors = [
     { name = "Pierce Freeman", email = "pierce@freeman.vc" },
@@ -8,12 +8,14 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "email-validator>=2.1.1",
     "pydantic-settings>=2.2.1",
     "lxml>=5.1.0",
     # for now, flexible to version but requires them present
     # during execution
-    "mountaineer-cloud>=0.1.1",
+    "mountaineer-cloud>=0.1.2",
     "mountaineer",
+    "waymark",
 ]
 
 [project.scripts]

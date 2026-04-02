@@ -6,3 +6,8 @@ from mountaineer_email.deps import get_email_template as get_email_template
 from mountaineer_email.render import (
     EmailMetadata as EmailMetadata,
 )
+from mountaineer_email.workflows import (
+    SendEmail as SendEmail,
+    SendEmailInput as SendEmailInput,
+    SendEmailResult as SendEmailResult,
+)
