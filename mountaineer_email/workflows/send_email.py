@@ -33,15 +33,18 @@ def _get_controller_input_model(
     return input_model
 
 
-def _specialize_send_email_input_model(
-    input_model: type[BaseModel],
-) -> type["SendEmailInput[Any]"]:
-    return cast(type[SendEmailInput[Any]], cast(Any, SendEmailInput)[input_model])
-
-
 class SendEmailInput(BaseModel, Generic[RenderInput]):
+    """
+    Portable payload for handing email rendering off to backend workflows.
+
+    The main app can fully mount email controllers into the Mountaineer graph and
+    resolve their asset paths on disk, but the background workflow process does
+    not have that graph available. We therefore serialize both the controller
+    identity and its known on-disk locations so the workflow can reload the
+    controller module and render with the same resolved assets later.
+    """
     email_controller: SerializedEmailController[RenderInput]
-    email_input: RenderInput
+    email_input: RenderInput | BaseModel | dict[str, Any]
     to_email: EmailStr
     to_name: str | None = None
     from_email: EmailStr
@@ -63,82 +66,45 @@ class SendEmailInput(BaseModel, Generic[RenderInput]):
         if isinstance(self.email_input, input_model):
             return self
 
+        if isinstance(self.email_input, BaseModel):
+            raw_input = self.email_input.model_dump(mode="json")
+        else:
+            raw_input = self.email_input
+
         self.email_input = cast(
             RenderInput,
-            input_model.model_validate(self.email_input.model_dump(mode="json")),
+            input_model.model_validate(raw_input),
         )
         return self
 
-    @classmethod
-    def from_controller_input(
-        cls,
-        controller: type[EmailControllerBase[RenderInput]]
-        | EmailControllerBase[RenderInput],
-        *,
-        email_input: RenderInput,
-        to_email: str,
-        to_name: str | None = None,
-        from_email: str,
-        from_name: str | None = None,
-    ) -> "SendEmailInput[RenderInput]":
-        payload_cls = cast(
-            type[SendEmailInput[RenderInput]],
-            _specialize_send_email_input_model(email_input.__class__),
-        )
-        return payload_cls.model_validate(
-            {
-                "email_controller": controller,
-                "email_input": email_input,
-                "to_email": to_email,
-                "to_name": to_name,
-                "from_email": from_email,
-                "from_name": from_name,
-            }
-        )
-
-    @classmethod
-    def from_email_input(
-        cls,
-        controller: type[EmailControllerBase[RenderInput]]
-        | EmailControllerBase[RenderInput],
-        *,
-        email_input: RenderInput,
-        to_email: str,
-        to_name: str | None = None,
-        from_email: str,
-        from_name: str | None = None,
-    ) -> "SendEmailInput[RenderInput]":
-        return cls.from_controller_input(
-            controller,
-            email_input=email_input,
-            to_email=to_email,
-            to_name=to_name,
-            from_email=from_email,
-            from_name=from_name,
-        )
-
-    @classmethod
-    def from_serialized_input(
-        cls,
-        *,
+@workflow
+class SendEmail(Workflow):
+    async def run(
+        self,
         email_controller: SerializedEmailController[Any],
         email_input: BaseModel | dict[str, Any],
         to_email: str,
-        to_name: str | None = None,
         from_email: str,
+        to_name: str | None = None,
         from_name: str | None = None,
-    ) -> "SendEmailInput[Any]":
-        input_model = _get_controller_input_model(email_controller)
-        payload_cls = _specialize_send_email_input_model(input_model)
-        return payload_cls.model_validate(
-            {
-                "email_controller": email_controller,
-                "email_input": email_input,
-                "to_email": to_email,
-                "to_name": to_name,
-                "from_email": from_email,
-                "from_name": from_name,
-            }
+    ) -> SendEmailResult:
+        constructed_email = await self.run_action(
+            construct_email(
+                email_controller=email_controller,
+                email_input=email_input,
+                to_email=to_email,
+                to_name=to_name,
+                from_email=from_email,
+                from_name=from_name,
+            ),
+            retry=RetryPolicy(attempts=2, backoff_seconds=1),
+            timeout=timedelta(seconds=60),
+        )
+
+        return await self.run_action(
+            send_constructed_email(constructed_email),
+            retry=RetryPolicy(attempts=3, backoff_seconds=5),
+            timeout=timedelta(seconds=60),
         )
 
 
@@ -185,7 +151,7 @@ async def construct_email(
     to_name: str | None = None,
     from_name: str | None = None,
 ) -> ConstructedEmail:
-    payload = SendEmailInput.from_serialized_input(
+    payload = SendEmailInput(
         email_controller=email_controller,
         email_input=email_input,
         to_email=to_email,
@@ -225,34 +191,3 @@ async def send_constructed_email(
     )
     message_id = await message.send(core)
     return SendEmailResult(message_id=message_id)
-
-
-@workflow
-class SendEmail(Workflow):
-    async def run(
-        self,
-        email_controller: SerializedEmailController[Any],
-        email_input: BaseModel | dict[str, Any],
-        to_email: str,
-        from_email: str,
-        to_name: str | None = None,
-        from_name: str | None = None,
-    ) -> SendEmailResult:
-        constructed_email = await self.run_action(
-            construct_email(
-                email_controller=email_controller,
-                email_input=email_input,
-                to_email=to_email,
-                to_name=to_name,
-                from_email=from_email,
-                from_name=from_name,
-            ),
-            retry=RetryPolicy(attempts=2, backoff_seconds=1),
-            timeout=timedelta(seconds=60),
-        )
-
-        return await self.run_action(
-            send_constructed_email(constructed_email),
-            retry=RetryPolicy(attempts=3, backoff_seconds=5),
-            timeout=timedelta(seconds=60),
-        )

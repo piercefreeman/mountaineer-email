@@ -94,8 +94,8 @@ class FakeEmailCore(EmailProviderCore[Any]):
 
 
 def test_send_email_input_preserves_typed_email_input() -> None:
-    payload = SendEmailInput.from_email_input(
-        MockWorkflowEmailController,
+    payload = SendEmailInput(
+        email_controller=MockWorkflowEmailController,
         email_input=MockWorkflowEmailRequest(recipient_name="Ada"),
         to_email="ada@example.com",
         to_name="Ada Lovelace",
@@ -110,8 +110,8 @@ def test_send_email_input_preserves_typed_email_input() -> None:
 
 @pytest.mark.asyncio
 async def test_construct_email_action() -> None:
-    payload = SendEmailInput.from_email_input(
-        MockWorkflowEmailController,
+    payload = SendEmailInput(
+        email_controller=MockWorkflowEmailController,
         email_input=MockWorkflowEmailRequest(recipient_name="Ada"),
         to_email="ada@example.com",
         to_name="Ada Lovelace",
