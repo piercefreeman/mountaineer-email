@@ -1,83 +1,197 @@
-from typing import Type
+from __future__ import annotations
 
-from mountaineer_email.controller import EmailControllerBase
+from collections.abc import Iterator
+from importlib import import_module
+from inspect import isclass
+from pathlib import Path
+from typing import Any, cast
 
-EMAIL_CONTROLLER_CACHE: dict[str, "EmailControllerBase"] | None = None
-INSTANCE_REGISTRY: dict[str, "EmailControllerBase"] = {}
+from pydantic import BaseModel
 
-# Simple registry for tracking email controller classes
-# Maps registry_id -> controller class
-EMAIL_CLASS_REGISTRY: dict[str, Type["EmailControllerBase"]] = {}
+from mountaineer import ManagedViewPath
+
+from mountaineer_email.controller import (
+    HYDRATED_SCRIPTS_PREFIX_ATTR,
+    HYDRATED_VIEW_BASE_ATTR,
+    EmailControllerBase,
+)
 
 
-def controller_to_registry_id(controller: Type["EmailControllerBase"]) -> str:
+class SerializedEmailController(BaseModel):
+    module: str
+    key: str
+    view_root: str | None = None
+    scripts_prefix: str | None = None
+
+    model_config = {
+        "extra": "forbid",
+        "frozen": True,
+    }
+
+
+def _controller_cls(
+    controller: type["EmailControllerBase"] | "EmailControllerBase",
+) -> type["EmailControllerBase"]:
+    if isclass(controller) and issubclass(controller, EmailControllerBase):
+        return controller
+
+    return controller.__class__
+
+
+def _controller_view_root(
+    controller: type["EmailControllerBase"] | "EmailControllerBase",
+    controller_cls: type["EmailControllerBase"],
+) -> str | None:
+    if (
+        isinstance(controller, EmailControllerBase)
+        and controller._view_base_path is not None
+    ):
+        return str(controller._view_base_path)
+
+    hydrated_view_root = getattr(controller_cls, HYDRATED_VIEW_BASE_ATTR, None)
+    if hydrated_view_root is not None:
+        return str(hydrated_view_root)
+
+    view_path = getattr(controller_cls, "view_path", None)
+    if isinstance(view_path, ManagedViewPath):
+        try:
+            return str(view_path.get_root_link())
+        except ValueError:
+            return None
+
+    return None
+
+
+def _controller_scripts_prefix(
+    controller: type["EmailControllerBase"] | "EmailControllerBase",
+    controller_cls: type["EmailControllerBase"],
+    view_root: str | None,
+) -> str | None:
+    if (
+        isinstance(controller, EmailControllerBase)
+        and controller._view_base_path is not None
+    ):
+        return controller._scripts_prefix
+
+    hydrated_scripts_prefix = getattr(
+        controller_cls, HYDRATED_SCRIPTS_PREFIX_ATTR, None
+    )
+    if hydrated_scripts_prefix is not None:
+        return cast(str, hydrated_scripts_prefix)
+
+    if view_root is not None:
+        return controller_cls._scripts_prefix
+
+    return None
+
+
+def _payload_to_registry_key(payload: SerializedEmailController) -> str:
+    return f"{payload.module}:{payload.key}"
+
+
+def _iter_email_controller_classes(
+    controller_cls: type["EmailControllerBase"] = EmailControllerBase,
+) -> Iterator[type["EmailControllerBase"]]:
+    for subclass in controller_cls.__subclasses__():
+        yield subclass
+        yield from _iter_email_controller_classes(subclass)
+
+
+def serialize_controller(
+    controller: type["EmailControllerBase"] | "EmailControllerBase",
+) -> SerializedEmailController:
     """
-    Returns the registry id for the given controller.
-    Format: {module}.{class_name}
+    Serialize an email controller into a stable import reference.
 
     """
-    return f"{controller.__module__}.{controller.__name__}"
+    controller_cls = _controller_cls(controller)
+    view_root = _controller_view_root(controller, controller_cls)
+    return SerializedEmailController(
+        module=controller_cls.__module__,
+        key=controller_cls.__qualname__,
+        view_root=view_root,
+        scripts_prefix=_controller_scripts_prefix(
+            controller, controller_cls, view_root
+        ),
+    )
 
 
-def register_email_controller_class(controller: Type["EmailControllerBase"]) -> None:
+def deserialize_controller_class(
+    payload: SerializedEmailController,
+) -> type["EmailControllerBase"]:
     """
-    Register an email controller class in the global registry.
-    This is called automatically by the EmailControllerMetaclass.
-
-    """
-    registry_id = controller_to_registry_id(controller)
-    EMAIL_CLASS_REGISTRY[registry_id] = controller
-
-
-def get_registered_email_controllers() -> dict[str, Type["EmailControllerBase"]]:
-    """
-    Returns all registered email controller classes.
-
-    """
-    return EMAIL_CLASS_REGISTRY.copy()
-
-
-def get_email_controller(registry_id: str) -> "EmailControllerBase":
-    """
-    Returns the email controller of the given type.
+    Resolve an email controller class from a serialized import reference.
 
     """
-    return INSTANCE_REGISTRY[registry_id]
+    module = import_module(payload.module)
+    controller_cls: Any = module
+
+    for key_part in payload.key.split("."):
+        if key_part == "<locals>":
+            raise ValueError(
+                f"Cannot deserialize local controller reference: {payload.key}"
+            )
+        controller_cls = getattr(controller_cls, key_part)
+
+    if not isclass(controller_cls) or not issubclass(
+        controller_cls, EmailControllerBase
+    ):
+        raise ValueError(
+            f"Resolved controller {payload.module}.{payload.key} is not an EmailControllerBase"
+        )
+
+    return cast(type["EmailControllerBase"], controller_cls)
 
 
-def register_email_controller_instance(controller: "EmailControllerBase") -> None:
+def deserialize_controller(payload: SerializedEmailController) -> "EmailControllerBase":
     """
-    Register an email controller instance in the global registry.
+    Instantiate an email controller from a serialized import reference.
 
     """
-    registry_id = controller_to_registry_id(controller.__class__)
-    INSTANCE_REGISTRY[registry_id] = controller
+    controller = deserialize_controller_class(payload)()
+
+    if payload.scripts_prefix is not None:
+        controller._scripts_prefix = payload.scripts_prefix
+
+    if payload.view_root is not None:
+        controller.resolve_paths(Path(payload.view_root), force=True)
+
+    return controller
 
 
-def register_email_controller(controller: Type["EmailControllerBase"]) -> None:
+def get_registered_email_controllers() -> dict[str, type["EmailControllerBase"]]:
     """
-    Register an email controller instance in the instance registry.
-    This is used for testing and daemon workflows.
+    Returns all imported email controller classes.
 
     """
-    register_email_controller_instance(controller())
+    return {
+        _payload_to_registry_key(serialize_controller(controller_cls)): controller_cls
+        for controller_cls in _iter_email_controller_classes()
+    }
+
+
+def register_email_controller(controller: type["EmailControllerBase"]) -> None:
+    """
+    Backwards-compatible helper that instantiates a controller.
+
+    """
+    controller()
 
 
 def clear_email_controller_cache() -> None:
     """
-    Clears the email controller cache.
+    Backwards-compatible no-op. Email controllers are no longer cached separately.
 
     """
-    global EMAIL_CONTROLLER_CACHE
-    EMAIL_CONTROLLER_CACHE = None
+    return None
 
 
 def clear_email_registry() -> None:
     """
-    Clears the email registry. Used for testing.
+    Clears per-class hydration state for imported email controllers. Used for testing.
 
     """
-    global EMAIL_CONTROLLER_CACHE
-    EMAIL_CONTROLLER_CACHE = None
-    INSTANCE_REGISTRY.clear()
-    EMAIL_CLASS_REGISTRY.clear()
+    for controller_cls in _iter_email_controller_classes():
+        for attr_name in (HYDRATED_VIEW_BASE_ATTR, HYDRATED_SCRIPTS_PREFIX_ATTR):
+            if hasattr(controller_cls, attr_name):
+                delattr(controller_cls, attr_name)

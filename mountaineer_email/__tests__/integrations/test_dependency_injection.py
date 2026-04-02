@@ -179,7 +179,12 @@ async def test_dependency_injection_renders_email_template(
     async with resolve_email_dependencies(
         callable=isolate_dependency_only_function(render_with_injected_template),
     ) as dependency_values:
-        assert dependency_values["template"] is template_controller
+        assert isinstance(dependency_values["template"], InjectedTemplateController)
+        assert dependency_values["template"] is not template_controller
+        assert (
+            dependency_values["template"]._view_base_path
+            == template_controller._view_base_path
+        )
         result = await render_with_injected_template(
             payload=payload,
             **dependency_values,
@@ -226,7 +231,12 @@ async def test_dependency_injection_sends_email_with_provider(
             send_with_injected_template_and_provider
         ),
     ) as dependency_values:
-        assert dependency_values["template"] is template_controller
+        assert isinstance(dependency_values["template"], InjectedTemplateController)
+        assert dependency_values["template"] is not template_controller
+        assert (
+            dependency_values["template"]._view_base_path
+            == template_controller._view_base_path
+        )
         provider_message_id = await send_with_injected_template_and_provider(
             payload=payload,
             **dependency_values,
