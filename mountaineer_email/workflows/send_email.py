@@ -39,14 +39,19 @@ class SendEmailInput(BaseModel, Generic[RenderInput]):
 
     email_controller: (
         SerializedEmailController[RenderInput]
-        | type[EmailControllerBase[RenderInput]]
-        | EmailControllerBase[RenderInput]
+        | type[EmailControllerBase]
+        | EmailControllerBase
     )
-    email_input: RenderInput | BaseModel | dict[str, Any]
+    # Coerce arbitrary model-like inputs after validation once the controller is known.
+    email_input: Any
     to_email: EmailStr
     to_name: str | None = None
     from_email: EmailStr
     from_name: str | None = None
+
+    model_config = {
+        "arbitrary_types_allowed": True,
+    }
 
     @field_validator("email_controller", mode="before")
     @classmethod
@@ -188,8 +193,8 @@ async def send_constructed_email(
 
 def _normalize_email_controller_reference(
     value: SerializedEmailController[RenderInput]
-    | type[EmailControllerBase[RenderInput]]
-    | EmailControllerBase[RenderInput],
+    | type[EmailControllerBase]
+    | EmailControllerBase,
 ) -> SerializedEmailController[RenderInput]:
     if (isclass(value) and issubclass(value, EmailControllerBase)) or isinstance(
         value, EmailControllerBase
