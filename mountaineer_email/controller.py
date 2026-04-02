@@ -3,6 +3,7 @@ from collections.abc import Mapping
 from contextlib import AsyncExitStack, asynccontextmanager
 from functools import wraps
 from inspect import isawaitable, isclass, signature
+from pathlib import Path
 from typing import Any, Coroutine, Generic, ParamSpec, cast
 from uuid import uuid4
 
@@ -18,6 +19,8 @@ from mountaineer_email.render import EmailRenderBase, FilledOutEmail
 
 RenderParameters = ParamSpec("RenderParameters")
 RAW_RENDER_METHOD_NAME = "_mountaineer_email_raw_render"
+HYDRATED_VIEW_BASE_ATTR = "_mountaineer_email_view_base_path"
+HYDRATED_SCRIPTS_PREFIX_ATTR = "_mountaineer_email_scripts_prefix"
 
 
 @asynccontextmanager
@@ -101,11 +104,6 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
 
             setattr(cls, "render", wrapped_render)
 
-        # Auto-register email controller classes (but not the base class itself)
-        from mountaineer_email.registry import register_email_controller_class
-
-        register_email_controller_class(cls)
-
     def __init__(self):
         # We need this definition to be included in our global OpenAPI spec, so we add
         # a synthetic URL
@@ -113,10 +111,6 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
         # use case without having to mock the URL
         self.url = f"/email/{self.__class__.__name__}-{uuid4()}/"
         super().__init__()
-
-        from mountaineer_email.registry import register_email_controller_instance
-
-        register_email_controller_instance(self)
 
     @abstractmethod
     def render(
@@ -162,6 +156,8 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
         *args: Any,
         **kwargs: Any,
     ) -> FilledOutEmail:
+        self.hydrate_for_render()
+
         async with resolve_email_dependencies(
             callable=isolate_dependency_only_function(self._get_raw_render()),
             request=request,
@@ -256,6 +252,42 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
                 **{variable_key: parsed_render_obj},
             )
         return await self.render_email(**{variable_key: parsed_render_obj})
+
+    def resolve_paths(self, view_base: Path, force: bool = True) -> bool:
+        found_dependencies = super().resolve_paths(view_base, force=force)
+        setattr(self.__class__, HYDRATED_VIEW_BASE_ATTR, Path(view_base))
+        setattr(self.__class__, HYDRATED_SCRIPTS_PREFIX_ATTR, self._scripts_prefix)
+        return found_dependencies
+
+    def hydrate_for_render(self) -> None:
+        if self._view_base_path is not None and self._ssr_path is not None:
+            return
+
+        hydrated_scripts_prefix = getattr(
+            self.__class__,
+            HYDRATED_SCRIPTS_PREFIX_ATTR,
+            None,
+        )
+        if hydrated_scripts_prefix is not None:
+            self._scripts_prefix = hydrated_scripts_prefix
+
+        hydrated_view_base = getattr(self.__class__, HYDRATED_VIEW_BASE_ATTR, None)
+        if hydrated_view_base is not None:
+            self.resolve_paths(hydrated_view_base, force=True)
+            return
+
+        if isinstance(self.view_path, ManagedViewPath):
+            try:
+                self.resolve_paths(self.view_path.get_root_link(), force=True)
+                return
+            except ValueError:
+                pass
+
+        if self._definition is None:
+            raise ValueError(
+                f"{self.__class__.__name__} cannot render from a fresh instance because its view root is unknown. "
+                "Mount the controller once or define view_path as a ManagedViewPath with a root link."
+            )
 
     def get_input_models(self) -> list[tuple[str, type[BaseModel]]]:
         """

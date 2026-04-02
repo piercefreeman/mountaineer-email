@@ -6,10 +6,11 @@ from mountaineer import AppController
 from mountaineer_email.controller import EmailControllerBase
 from mountaineer_email.deps import get_email_template
 from mountaineer_email.registry import (
+    SerializedEmailController,
     clear_email_controller_cache,
-    controller_to_registry_id,
-    get_email_controller,
-    register_email_controller,
+    deserialize_controller,
+    get_registered_email_controllers,
+    serialize_controller,
 )
 from mountaineer_email.render import EmailMetadata, EmailRenderBase
 
@@ -48,125 +49,76 @@ class AnotherSampleEmailController(EmailControllerBase):
 
 @pytest.fixture(autouse=True)
 def clear_cache_before_test():
-    """Clear the email controller cache before each test."""
     clear_email_controller_cache()
     yield
     clear_email_controller_cache()
 
 
-def test_controller_to_registry_id():
-    """Test that controller_to_registry_id returns the correct registry ID."""
-    # Get the registry ID
-    registry_id = controller_to_registry_id(SampleEmailController)
+def test_serialize_controller():
+    payload = serialize_controller(SampleEmailController)
 
-    # Verify it's a string and matches what we expect from the registry
-    assert isinstance(registry_id, str)
-    assert (
-        registry_id == "mountaineer_email.__tests__.test_registry.SampleEmailController"
+    assert payload == SerializedEmailController(
+        module="mountaineer_email.__tests__.test_registry",
+        key="SampleEmailController",
+        view_root=None,
+        scripts_prefix=None,
     )
 
 
-def test_clear_email_controller_cache():
-    """Test that clear_email_controller_cache properly clears the global cache."""
-    import mountaineer_email.registry as registry_module
+def test_deserialize_controller_requires_known_view_root_for_relative_paths():
+    payload = serialize_controller(SampleEmailController)
 
-    # Set up some fake cache data
-    registry_module.EMAIL_CONTROLLER_CACHE = {"test_id": SampleEmailController()}
-    assert registry_module.EMAIL_CONTROLLER_CACHE is not None
+    result = deserialize_controller(payload)
 
-    # Clear the cache
-    clear_email_controller_cache()
-
-    # Verify it's been cleared
-    assert registry_module.EMAIL_CONTROLLER_CACHE is None
+    assert isinstance(result, SampleEmailController)
+    with pytest.raises(ValueError, match="view root is unknown"):
+        result.hydrate_for_render()
 
 
-def test_get_email_controller_builds_cache_on_first_call(
+def test_deserialize_controller_returns_fresh_hydrated_controller(
     email_app_controller: AppController,
 ) -> None:
-    """Test that get_email_controller returns mounted controller instances."""
-    # Create and register test controllers
-    test_controller = SampleEmailController()
-    another_controller = AnotherSampleEmailController()
+    mounted_controller = SampleEmailController()
+    email_app_controller.register(mounted_controller)
 
-    email_app_controller.register(test_controller)
-    email_app_controller.register(another_controller)
+    payload = serialize_controller(SampleEmailController)
+    result = deserialize_controller(payload)
 
-    # Get registry IDs for our controllers
-    test_registry_id = controller_to_registry_id(SampleEmailController)
-
-    # Call get_email_controller
-    result = get_email_controller(test_registry_id)
-
-    # Verify the result
-    assert result == test_controller
+    assert isinstance(result, SampleEmailController)
+    assert result is not mounted_controller
+    assert payload.view_root == str(mounted_controller._view_base_path)
+    assert payload.scripts_prefix == mounted_controller._scripts_prefix
+    assert result._view_base_path == mounted_controller._view_base_path
+    assert result._ssr_path == mounted_controller._ssr_path
 
 
-def test_get_email_controller_uses_existing_cache(
+def test_get_registered_email_controllers_uses_imported_subclasses():
+    registered_controllers = get_registered_email_controllers()
+
+    assert SampleEmailController in registered_controllers.values()
+    assert AnotherSampleEmailController in registered_controllers.values()
+
+
+def test_deserialize_controller_raises_value_error_for_non_email_controller() -> None:
+    with pytest.raises(ValueError):
+        deserialize_controller(
+            SerializedEmailController(
+                module="pydantic",
+                key="BaseModel",
+            )
+        )
+
+
+def test_get_email_template_returns_fresh_hydrated_instance(
     email_app_controller: AppController,
 ) -> None:
-    """Test that get_email_controller uses globally registered instances."""
-    # Create a test controller
-    test_controller = SampleEmailController()
-    test_registry_id = controller_to_registry_id(SampleEmailController)
-    email_app_controller.register(test_controller)
-
-    # Call get_email_controller
-    result = get_email_controller(test_registry_id)
-
-    # Verify the result
-    assert result == test_controller
-
-    # Verify the cache was used (no controllers should be registered on the app controller)
-    assert len(email_app_controller.graph.controllers) == 1
-
-
-def test_get_email_controller_filters_non_email_controllers(
-    email_app_controller: AppController,
-) -> None:
-    """Test that get_email_controller only resolves EmailControllerBase instances."""
-    from mountaineer import ControllerBase
-    from mountaineer.render import RenderBase
-
-    class NonEmailController(ControllerBase):
-        url = "/test"
-        view_path = "/test/page.tsx"  # Add required view_path
-
-        async def render(self) -> RenderBase:
-            return RenderBase()
-
-    # Create and register controllers
-    test_controller = SampleEmailController()
-    non_email_controller = NonEmailController()
-
-    email_app_controller.register(test_controller)
-    email_app_controller.register(non_email_controller)
-
-    # Get registry ID for our email controller
-    test_registry_id = controller_to_registry_id(SampleEmailController)
-
-    # Call get_email_controller
-    result = get_email_controller(test_registry_id)
-
-    # Verify the result
-    assert result == test_controller
-
-
-def test_get_email_controller_raises_key_error_for_missing_controller(
-    email_app_controller: AppController,
-) -> None:
-    """Test that get_email_controller raises KeyError for non-existent registry ID."""
-    # Don't register any controllers
-
-    # Try to get a non-existent controller
-    with pytest.raises(KeyError):
-        get_email_controller("non_existent_id")
-
-
-def test_get_email_template_returns_registered_instance():
-    register_email_controller(SampleEmailController)
+    mounted_controller = SampleEmailController()
+    email_app_controller.register(mounted_controller)
 
     dependency = get_email_template(SampleEmailController)
     result = dependency()
 
     assert isinstance(result, SampleEmailController)
+    assert result is not mounted_controller
+    assert result._view_base_path == mounted_controller._view_base_path
+    assert result._ssr_path == mounted_controller._ssr_path

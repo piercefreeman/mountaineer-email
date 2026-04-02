@@ -10,7 +10,7 @@ The core flow is:
 
 1. Define an `EmailControllerBase` with a typed payload model.
 2. Register that controller on your `AppController`. If you want the bundled preview/admin UI, also register the `mountaineer-email` plugin.
-3. Inject the mounted email template with `Depends(get_email_template(...))`.
+3. Inject a typed email template with `Depends(get_email_template(...))`.
 4. Call `await template.render(...)` with your payload to produce a `FilledOutEmail`.
 
 ```python
@@ -237,7 +237,7 @@ Registering `email_plugin` only adds the bundled preview controllers and their p
 
 `mountaineer-email` only owns the rendering and preview flow. Provider-specific delivery settings should come from the matching `mountaineer-cloud` provider config, for example `ResendConfig` if you're sending through Resend.
 
-To render a filled email from application code, resolve the mounted template instance from the registry and call `render(...)` with your request model:
+To render a filled email from application code, resolve a typed template with `get_email_template(...)` and call `render(...)` with your request model:
 
 ```python
 from fastapi import Depends
