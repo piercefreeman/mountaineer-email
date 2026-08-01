@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import type { SimpleSchema } from "./_server/models";
+import type { SimpleSchema } from "./.mountaineer/models";
 
 type MockBodyRequest = Record<string, string>;
 

@@ -4,7 +4,7 @@ from warnings import filterwarnings
 
 import pytest
 
-from mountaineer import AppController, PostCSSBundler
+from mountaineer import AppController
 
 from mountaineer_email.__tests__ import conf_models as models
 from mountaineer_email.registry import clear_email_registry as _clear_email_registry
@@ -36,7 +36,6 @@ def config() -> models.AppConfig:
 def app_controller(view_root: Path, config: models.AppConfig):
     return AppController(
         view_root=view_root,
-        custom_builders=[PostCSSBundler()],
         config=config,
     )
 

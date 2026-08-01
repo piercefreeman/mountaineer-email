@@ -118,7 +118,7 @@ Define your view:
 
 ```tsx
 import React from "react";
-import { useServer } from "./_server/useServer";
+import { useServer } from "./.mountaineer/useServer";
 
 const Page = () => {
   const serverState = useServer();
@@ -222,9 +222,6 @@ controller = AppController(
     global_metadata=Metadata(
         links=[LinkAttribute(rel="stylesheet", href="/static/app_main.css")]
     ),
-    custom_builders=[
-        PostCSSBundler(),
-    ],
 )
 
 controller.register(emails.WelcomeEmailController())

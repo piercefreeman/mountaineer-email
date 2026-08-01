@@ -1,6 +1,6 @@
 import React from "react";
 // eslint-disable-next-line import/no-unresolved
-import { useServer } from "./_server";
+import { useServer } from "./.mountaineer";
 
 const Page = () => {
   const serverState = useServer();

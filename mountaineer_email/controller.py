@@ -4,7 +4,7 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from functools import wraps
 from inspect import isawaitable, isclass, signature
 from pathlib import Path
-from typing import Any, Coroutine, Generic, ParamSpec, cast
+from typing import TYPE_CHECKING, Any, Coroutine, Generic, ParamSpec, cast
 from uuid import uuid4
 
 from fastapi import Request, params
@@ -16,6 +16,9 @@ from mountaineer.dependencies import isolate_dependency_only_function
 from mountaineer.ssr import render_ssr
 
 from mountaineer_email.render import EmailRenderBase, FilledOutEmail
+
+if TYPE_CHECKING:
+    from mountaineer.graph.app_graph import ControllerDefinition
 
 RenderParameters = ParamSpec("RenderParameters")
 RAW_RENDER_METHOD_NAME = "_mountaineer_email_raw_render"
@@ -112,6 +115,21 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
         self.url = f"/email/{self.__class__.__name__}-{uuid4()}/"
         super().__init__()
 
+    @property
+    def _definition(self) -> "ControllerDefinition | None":
+        return self.__definition
+
+    @_definition.setter
+    def _definition(self, definition: "ControllerDefinition | None") -> None:
+        self.__definition = definition
+        if definition is not None:
+            setattr(self.__class__, HYDRATED_VIEW_BASE_ATTR, Path(definition.view_root))
+            setattr(
+                self.__class__,
+                HYDRATED_SCRIPTS_PREFIX_ATTR,
+                self._scripts_prefix,
+            )
+
     @abstractmethod
     def render(
         self, *payload: RenderParameters.args, **kwargs: RenderParameters.kwargs
@@ -156,8 +174,6 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
         *args: Any,
         **kwargs: Any,
     ) -> FilledOutEmail:
-        self.hydrate_for_render()
-
         async with resolve_email_dependencies(
             callable=isolate_dependency_only_function(self._get_raw_render()),
             request=request,
@@ -175,26 +191,19 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
                 f"EmailController.render() must return a EmailRenderBase instance, not {type(server_data)}"
             )
 
-        cached_server_script: str
-        # Support app-mounted routes (preview) and standalone routes (daemons)
-        # TODO: We should probably mount email controllers to an AppController, even if that
-        # app controller is only used within the daemon actions, to share the rendering logic
-        # with the main codebase.
-        if self._definition:
-            cache = self._definition.resolve_cache()
-            cached_server_script = cache.cached_server_script
-        else:
-            # Read from the SSR path itself
-            if not self._ssr_path:
-                raise ValueError(
-                    f"{self.__class__.__name__} must have a _ssr_path defined since no _definition was found"
-                )
-            cached_server_script = self._ssr_path.read_text()
+        view_root = self.get_view_root()
+        server_path = (
+            view_root.get_managed_ssr_dir(create_dir=False) / f"{self.script_name}.js"
+        )
+        if not server_path.is_file():
+            raise ValueError(
+                f"Missing frontend artifact {server_path}. Run the Mountaineer build command first."
+            )
 
         render_params = {self.__class__.__name__: server_data.model_dump(mode="json")}
 
         ssr_html = render_ssr(
-            cached_server_script,
+            server_path.read_text(),
             render_params,
             hard_timeout=10,
         )
@@ -208,11 +217,6 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
         </body>
         </html>
         """
-
-        if not self._view_base_path:
-            raise ValueError(
-                f"{self.__class__.__name__} must have a view_base_path defined"
-            )
 
         return FilledOutEmail(
             subject=server_data.email_metadata.subject,
@@ -253,41 +257,27 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
             )
         return await self.render_email(**{variable_key: parsed_render_obj})
 
-    def resolve_paths(self, view_base: Path, force: bool = True) -> bool:
-        found_dependencies = super().resolve_paths(view_base, force=force)
-        setattr(self.__class__, HYDRATED_VIEW_BASE_ATTR, Path(view_base))
-        setattr(self.__class__, HYDRATED_SCRIPTS_PREFIX_ATTR, self._scripts_prefix)
-        return found_dependencies
+    def get_view_root(self) -> ManagedViewPath:
+        if self._definition is not None:
+            return self._definition.view_root
 
-    def hydrate_for_render(self) -> None:
-        if self._view_base_path is not None and self._ssr_path is not None:
-            return
-
-        hydrated_scripts_prefix = getattr(
-            self.__class__,
-            HYDRATED_SCRIPTS_PREFIX_ATTR,
-            None,
-        )
-        if hydrated_scripts_prefix is not None:
-            self._scripts_prefix = hydrated_scripts_prefix
-
-        hydrated_view_base = getattr(self.__class__, HYDRATED_VIEW_BASE_ATTR, None)
-        if hydrated_view_base is not None:
-            self.resolve_paths(hydrated_view_base, force=True)
-            return
+        hydrated_view_root = getattr(self.__class__, HYDRATED_VIEW_BASE_ATTR, None)
+        if hydrated_view_root is not None:
+            return ManagedViewPath.from_view_root(hydrated_view_root)
 
         if isinstance(self.view_path, ManagedViewPath):
             try:
-                self.resolve_paths(self.view_path.get_root_link(), force=True)
-                return
+                return self.view_path.get_root_link()
             except ValueError:
                 pass
 
-        if self._definition is None:
-            raise ValueError(
-                f"{self.__class__.__name__} cannot render from a fresh instance because its view root is unknown. "
-                "Mount the controller once or define view_path as a ManagedViewPath with a root link."
-            )
+        raise ValueError(
+            f"{self.__class__.__name__} cannot render from a fresh instance because its view root is unknown. "
+            "Mount the controller once or define view_path as a ManagedViewPath with a root link."
+        )
+
+    def hydrate_for_render(self) -> None:
+        self.get_view_root()
 
     def get_input_models(self) -> list[tuple[str, type[BaseModel]]]:
         """
