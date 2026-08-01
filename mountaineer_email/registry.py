@@ -46,11 +46,8 @@ def _controller_view_root(
     | "EmailControllerBase[RenderInput]",
     controller_cls: type["EmailControllerBase[RenderInput]"],
 ) -> str | None:
-    if (
-        isinstance(controller, EmailControllerBase)
-        and controller._view_base_path is not None
-    ):
-        return str(controller._view_base_path)
+    if isinstance(controller, EmailControllerBase) and controller._definition:
+        return str(controller._definition.view_root)
 
     hydrated_view_root = getattr(controller_cls, HYDRATED_VIEW_BASE_ATTR, None)
     if hydrated_view_root is not None:
@@ -72,10 +69,7 @@ def _controller_scripts_prefix(
     controller_cls: type["EmailControllerBase[RenderInput]"],
     view_root: str | None,
 ) -> str | None:
-    if (
-        isinstance(controller, EmailControllerBase)
-        and controller._view_base_path is not None
-    ):
+    if isinstance(controller, EmailControllerBase) and controller._definition:
         return controller._scripts_prefix
 
     hydrated_scripts_prefix = getattr(
@@ -156,13 +150,14 @@ def deserialize_controller(
     Instantiate an email controller from a serialized import reference.
 
     """
-    controller = deserialize_controller_class(payload)()
+    controller_cls = deserialize_controller_class(payload)
+    controller = controller_cls()
 
     if payload.scripts_prefix is not None:
         controller._scripts_prefix = payload.scripts_prefix
 
     if payload.view_root is not None:
-        controller.resolve_paths(Path(payload.view_root), force=True)
+        setattr(controller_cls, HYDRATED_VIEW_BASE_ATTR, Path(payload.view_root))
 
     return controller
 

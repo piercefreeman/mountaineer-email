@@ -72,7 +72,7 @@ def test_deserialize_controller_requires_known_view_root_for_relative_paths():
 
     assert isinstance(result, SampleEmailController)
     with pytest.raises(ValueError, match="view root is unknown"):
-        result.hydrate_for_render()
+        result.get_view_root()
 
 
 def test_deserialize_controller_returns_fresh_hydrated_controller(
@@ -86,10 +86,10 @@ def test_deserialize_controller_returns_fresh_hydrated_controller(
 
     assert isinstance(result, SampleEmailController)
     assert result is not mounted_controller
-    assert payload.view_root == str(mounted_controller._view_base_path)
+    assert mounted_controller._definition is not None
+    assert payload.view_root == str(mounted_controller._definition.view_root)
     assert payload.scripts_prefix == mounted_controller._scripts_prefix
-    assert result._view_base_path == mounted_controller._view_base_path
-    assert result._ssr_path == mounted_controller._ssr_path
+    assert result.get_view_root() == mounted_controller.get_view_root()
 
 
 def test_get_registered_email_controllers_uses_imported_subclasses():
@@ -120,5 +120,4 @@ def test_get_email_template_returns_fresh_hydrated_instance(
 
     assert isinstance(result, SampleEmailController)
     assert result is not mounted_controller
-    assert result._view_base_path == mounted_controller._view_base_path
-    assert result._ssr_path == mounted_controller._ssr_path
+    assert result.get_view_root() == mounted_controller.get_view_root()

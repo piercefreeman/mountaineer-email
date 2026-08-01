@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 import subprocess
 from json import loads as json_loads
@@ -6,20 +7,12 @@ from typing import cast
 
 import pytest
 from fastapi import Depends
-from inflection import underscore
 from pydantic import BaseModel
 from pytest_httpx import HTTPXMock  # pyright: ignore[reportMissingImports]
 
-from mountaineer import (
-    AppController,
-    LinkAttribute,
-    Metadata,
-    mountaineer as mountaineer_rs,  # ty: ignore[unresolved-import]  # pyright: ignore[reportAttributeAccessIssue]
-)
-from mountaineer.client_builder.builder import APIBuilder
-from mountaineer.client_compiler.compile import ClientCompiler
+from mountaineer import AppController, LinkAttribute, Metadata
+from mountaineer.cli import handle_build
 from mountaineer.dependencies import isolate_dependency_only_function
-from mountaineer.static import get_static_path
 from mountaineer_cloud.primitives import (  # pyright: ignore[reportMissingImports]
     EmailBody,
     EmailMessage,
@@ -93,37 +86,19 @@ def copy_integration_view(view_root: Path) -> Path:
     return view_root
 
 
+_BUILD_COMPONENT: AppController | None = None
+
+
 async def build_email_views(app_controller: AppController) -> None:
-    js_compiler = APIBuilder(
-        app_controller,
-        live_reload_port=None,
-    )
-    client_compiler = ClientCompiler(app_controller)
-
-    await js_compiler.build_all()
-    await client_compiler.run_builder_plugins()
-
-    ssr_output = app_controller._view_root.get_managed_ssr_dir()
-    all_view_paths: list[list[str]] = []
-    for controller_definition in app_controller.graph.controllers:
-        all_view_paths += controller_definition.get_hierarchy_view_paths()
-
-    result_scripts, _ = mountaineer_rs.compile_independent_bundles(
-        all_view_paths,
-        str(app_controller._view_root / "node_modules"),
-        "production",
-        0,
-        str(get_static_path("live_reload.ts").resolve().absolute()),
-        True,
-    )
-
-    for controller_definition, script in zip(
-        app_controller.graph.controllers,
-        result_scripts,
-        strict=True,
-    ):
-        script_name = underscore(controller_definition.controller.__class__.__name__)
-        (ssr_output / f"{script_name}.js").write_text(script)
+    global _BUILD_COMPONENT
+    _BUILD_COMPONENT = app_controller
+    try:
+        await asyncio.to_thread(
+            handle_build,
+            webcontroller=f"{__name__}:_BUILD_COMPONENT",
+        )
+    finally:
+        _BUILD_COMPONENT = None
 
 
 async def render_with_injected_template(
@@ -169,8 +144,6 @@ async def test_dependency_injection_renders_email_template(
     app_controller.register(template_controller)
 
     await build_email_views(app_controller)
-    template_controller.resolve_paths(app_controller._view_root, force=True)
-
     payload = InjectedTemplatePayload(
         recipient_name="Ada",
         message="Integration coverage for dependency injection.",
@@ -182,8 +155,8 @@ async def test_dependency_injection_renders_email_template(
         assert isinstance(dependency_values["template"], InjectedTemplateController)
         assert dependency_values["template"] is not template_controller
         assert (
-            dependency_values["template"]._view_base_path
-            == template_controller._view_base_path
+            dependency_values["template"].get_view_root()
+            == template_controller.get_view_root()
         )
         result = await render_with_injected_template(
             payload=payload,
@@ -213,8 +186,6 @@ async def test_dependency_injection_sends_email_with_provider(
     app_controller.register(template_controller)
 
     await build_email_views(app_controller)
-    template_controller.resolve_paths(app_controller._view_root, force=True)
-
     httpx_mock.add_response(
         method="POST",
         url="https://api.resend.test/emails",
@@ -234,8 +205,8 @@ async def test_dependency_injection_sends_email_with_provider(
         assert isinstance(dependency_values["template"], InjectedTemplateController)
         assert dependency_values["template"] is not template_controller
         assert (
-            dependency_values["template"]._view_base_path
-            == template_controller._view_base_path
+            dependency_values["template"].get_view_root()
+            == template_controller.get_view_root()
         )
         provider_message_id = await send_with_injected_template_and_provider(
             payload=payload,

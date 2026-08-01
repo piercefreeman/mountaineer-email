@@ -1,3 +1,4 @@
+import asyncio
 import shutil
 import subprocess
 from pathlib import Path
@@ -5,18 +6,10 @@ from typing import Any, cast
 
 import pytest
 from fastapi import Request
-from inflection import underscore
 from pydantic import BaseModel
 
-from mountaineer import (
-    AppController,
-    LinkAttribute,
-    Metadata,
-    mountaineer as mountaineer_rs,  # ty: ignore[unresolved-import]
-)
-from mountaineer.client_builder.builder import APIBuilder
-from mountaineer.client_compiler.compile import ClientCompiler
-from mountaineer.static import get_static_path
+from mountaineer import AppController, LinkAttribute, Metadata
+from mountaineer.cli import handle_build
 
 from mountaineer_email.__tests__.fixtures import get_fixtures_path
 from mountaineer_email.controller import (
@@ -33,43 +26,19 @@ class ExampleData(BaseModel):
     value: str
 
 
-async def simple_build(app_controller: AppController):
-    """
-    Simplified, in-code version of the build CLI.
-    TODO: Refactor the actual CLI into a separate `build_controller` function
-    since it doesn't depend on the hot reloader
+_BUILD_COMPONENT: AppController | None = None
 
-    """
-    js_compiler = APIBuilder(
-        app_controller,
-        live_reload_port=None,
-    )
-    client_compiler = ClientCompiler(app_controller)
 
-    # Build the latest client support files (useServer)
-    await js_compiler.build_all()
-    await client_compiler.run_builder_plugins()
-
-    ssr_output = app_controller._view_root.get_managed_ssr_dir()
-
-    all_view_paths: list[list[str]] = []
-    for controller_definition in app_controller.graph.controllers:
-        all_view_paths += controller_definition.get_hierarchy_view_paths()
-
-    # Now we go one-by-one to provide the SSR files, which will be consolidated
-    # into a single runnable script for ease of use by the V8 engine
-    result_scripts, _ = mountaineer_rs.compile_independent_bundles(
-        all_view_paths,
-        str(app_controller._view_root / "node_modules"),
-        "production",
-        0,
-        str(get_static_path("live_reload.ts").resolve().absolute()),
-        True,
-    )
-
-    for controller, script in zip(app_controller.graph.controllers, result_scripts):
-        script_root = underscore(controller.controller.__class__.__name__)
-        (ssr_output / f"{script_root}.js").write_text(script)
+async def simple_build(app_controller: AppController) -> None:
+    global _BUILD_COMPONENT
+    _BUILD_COMPONENT = app_controller
+    try:
+        await asyncio.to_thread(
+            handle_build,
+            webcontroller=f"{__name__}:_BUILD_COMPONENT",
+        )
+    finally:
+        _BUILD_COMPONENT = None
 
 
 @pytest.fixture
@@ -136,16 +105,22 @@ async def test_build_email_controller(
     await simple_build(app_controller)
 
     # Ensure that the builder has generated the expected files
-    assert {path.name for path in (mock_application_view / "_ssr").iterdir()} == {
+    assert {
+        path.name for path in (mock_application_view / ".mountaineer" / "ssr").iterdir()
+    } == {
         "example_email_controller.js",
+        "example_email_controller.js.map",
     }
     assert "emails_main.css" in [
-        path.name for path in Path(mock_application_view / "_static").iterdir()
+        path.name
+        for path in Path(mock_application_view / ".mountaineer" / "static").iterdir()
     ]
 
     # Check that this is a regular css definition file that has sniffed our contents and isn't
     # including every style from tailwind
-    css_contents = (mock_application_view / "_static/emails_main.css").read_text()
+    css_contents = (
+        mock_application_view / ".mountaineer/static/emails_main.css"
+    ).read_text()
     assert ".text-blue-500" in css_contents
     assert ".text-green-500" not in css_contents
 
@@ -166,8 +141,6 @@ async def test_generate_email(
 
     # Build the email SSR definitions
     await simple_build(app_controller)
-    email_controller.resolve_paths(app_controller._view_root, force=True)
-
     result = await email_controller._generate_email(
         initial_data=ExampleData(value="MY_DYNAMIC_VALUE"),
     )
@@ -186,8 +159,6 @@ async def test_render_helper_with_model_instance(
     app_controller.register(email_controller)
 
     await simple_build(app_controller)
-    email_controller.resolve_paths(app_controller._view_root, force=True)
-
     result = await email_controller.render(ExampleData(value="POSITIONAL_VALUE"))
 
     assert isinstance(result, FilledOutEmail)
@@ -205,8 +176,6 @@ async def test_render_obj_helper(
     app_controller.register(email_controller)
 
     await simple_build(app_controller)
-    email_controller.resolve_paths(app_controller._view_root, force=True)
-
     result = await email_controller.render_obj({"value": "DICT_VALUE"})
 
     assert "DICT_VALUE" in result.html_body
@@ -223,8 +192,6 @@ async def test_render_helper_with_dict_payload(
     app_controller.register(email_controller)
 
     await simple_build(app_controller)
-    email_controller.resolve_paths(app_controller._view_root, force=True)
-
     result = await cast(Any, email_controller).render({"value": "DICT_RENDER_VALUE"})
 
     assert isinstance(result, FilledOutEmail)
@@ -242,8 +209,6 @@ async def test_render_with_kwargs_returns_render_model(
     app_controller.register(email_controller)
 
     await simple_build(app_controller)
-    email_controller.resolve_paths(app_controller._view_root, force=True)
-
     result = await email_controller.render(
         initial_data=ExampleData(value="KWARG_VALUE")
     )
@@ -263,8 +228,6 @@ async def test_generate_email_with_request_scope(
     app_controller.register(email_controller)
 
     await simple_build(app_controller)
-    email_controller.resolve_paths(app_controller._view_root, force=True)
-
     request = Request(
         scope={
             "type": "http",

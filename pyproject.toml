@@ -14,7 +14,7 @@ dependencies = [
     # for now, flexible to version but requires them present
     # during execution
     "mountaineer-cloud>=0.1.2",
-    "mountaineer",
+    "mountaineer>=0.20.0.dev1",
     "waymark",
 ]
 
@@ -30,8 +30,8 @@ build-backend = "hatchling.build"
 # added to a larger mountaineer project, so we need to copy over our built
 # artifacts for use in the downstream webapp
 artifacts = [
-    "mountaineer_email/views/_static",
-    "mountaineer_email/views/_ssr"
+    "mountaineer_email/views/.mountaineer/static",
+    "mountaineer_email/views/.mountaineer/ssr"
 ]
 
 [dependency-groups]
