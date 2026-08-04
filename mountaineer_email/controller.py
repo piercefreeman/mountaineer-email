@@ -5,7 +5,6 @@ from functools import wraps
 from inspect import isawaitable, isclass, signature
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Coroutine, Generic, ParamSpec, cast
-from uuid import uuid4
 
 from fastapi import Request, params
 from fastapi.dependencies.utils import get_dependant, solve_dependencies
@@ -109,10 +108,13 @@ class EmailControllerBase(ControllerBase[RenderParameters], Generic[RenderParame
 
     def __init__(self):
         # We need this definition to be included in our global OpenAPI spec, so we add
-        # a synthetic URL
+        # a synthetic URL. It must be deterministic across processes: a random
+        # component changes the generated frontend links on every dev-server
+        # regeneration, which the file watcher sees as a source change and
+        # re-triggers itself in an infinite reload loop.
         # TODO: Generalize the LayoutController convention (ie. urlless) to support this
         # use case without having to mock the URL
-        self.url = f"/email/{self.__class__.__name__}-{uuid4()}/"
+        self.url = f"/email/{self.__class__.__module__}.{self.__class__.__name__}/"
         super().__init__()
 
     @property
