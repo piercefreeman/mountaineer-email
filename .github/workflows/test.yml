@@ -67,7 +67,13 @@ jobs:
         run: uv build
 
       - name: Verify packaged plugin assets
-        run: uv run python .github/scripts/verify_plugin_assets.py mountaineer_email/views/.mountaineer/static mountaineer_email/views/.mountaineer/ssr
+        run: >-
+          uv run python .github/scripts/verify_plugin_assets.py
+          mountaineer_email/views/.mountaineer/static
+          mountaineer_email/views/.mountaineer/ssr
+          mountaineer_email/views/.mountaineer/api.ts
+          mountaineer_email/views/email/detail/.mountaineer/links.ts
+          mountaineer_email/views/email/home/.mountaineer/links.ts
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

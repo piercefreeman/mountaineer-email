@@ -31,7 +31,10 @@ build-backend = "hatchling.build"
 # artifacts for use in the downstream webapp
 artifacts = [
     "mountaineer_email/views/.mountaineer/static",
-    "mountaineer_email/views/.mountaineer/ssr"
+    "mountaineer_email/views/.mountaineer/ssr",
+    "mountaineer_email/views/.mountaineer/api.ts",
+    "mountaineer_email/views/email/detail/.mountaineer/links.ts",
+    "mountaineer_email/views/email/home/.mountaineer/links.ts",
 ]
 
 [dependency-groups]
